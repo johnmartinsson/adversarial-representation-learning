@@ -3,8 +3,18 @@
 	cd data
 	sh doit.sh
 
-# Pre-train classifiers
+# Fixed classifiers
+The fixed classifiers for the secret (smiling) and the utility (gender) can
+either be downloaded from a google drive, or be trained from scratch by
+following the instructions below.
 
-# Pre-train filter
+## Download fixed classifiers
+	
+	cd classifiers
+	sh doit.sh
 
-# Train combined model
+## Train fixed classifiers
+
+	python3 train_classifiers.py
+
+# Train adversarial bottleneck model
