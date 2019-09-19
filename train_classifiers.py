@@ -48,7 +48,7 @@ if __name__ == '__main__':
     trainloader = DataLoader(celeba_traindataset, batch_size=8, shuffle=True, num_workers=8)
     validloader = DataLoader(celeba_validdataset, batch_size=8, shuffle=True, num_workers=8)
 
-    for epoch in range(20):
+    for epoch in range(5):
         # TRAINING
         utility_running_loss = 0.0
         secret_running_loss = 0.0
@@ -103,5 +103,5 @@ if __name__ == '__main__':
                 (epoch + 1, utility_acc / (i+1), secret_acc / (i+1)))
 
         # serialize the models
-        torch.save(discriminator_utility.state_dict(), "artifacts/classifiers/discriminator_utility_{}.h5".format(epoch))
-        torch.save(discriminator_secret.state_dict(), "artifacts/classifiers/discriminator_secret_{}.h5".format(epoch))
+        torch.save(discriminator_utility.state_dict(), "classifiers/classifier_utility.h5".format(epoch))
+        torch.save(discriminator_secret.state_dict(), "classifiers/clasifier_secret.h5".format(epoch))
