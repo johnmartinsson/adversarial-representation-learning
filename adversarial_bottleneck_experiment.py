@@ -29,19 +29,13 @@ def run_experiment(hparams, writer):
     beta2          = 0.99
     nb_discriminator_steps = 1
     nb_generator_steps     = 1
-    use_gray_scale = False
 
     image_height   = 224
     image_width    = 224
 
-    if use_gray_scale:
-        channels_in  = 1
-        channels_out = 1
-        image_dir    = './data/imgs_gray'
-    else:
-        channels_in  = 3
-        channels_out = 3
-        image_dir    = './data/imgs'
+    channels_in  = 3
+    channels_out = 3
+    image_dir    = './data/imgs'
 
     print(hparams.device)
     input_shape = (image_height, image_width)
@@ -60,31 +54,32 @@ def run_experiment(hparams, writer):
         G_optimizer = optim.Adam(
             list(G1.parameters()) + list(G2.parameters()) + list(G_w.parameters()), lr=hparams.g_lr, betas=(beta1, beta2))
     else:
+        G_w = None
         G_optimizer = optim.Adam(
             list(G1.parameters()) + list(G2.parameters()), lr=hparams.g_lr, betas=(beta1, beta2))
 
     # initialize discriminator
-    if use_gray_scale:
-        # secret discriminator
-        Ds = MyResNet(channels_in = channels_in, block=models.resnet.Bottleneck, layers=[3,4,6,3], num_classes=2)
-        # real/fake discriminator
-        Drf = MyResNet(channels_in = channels_in, block=models.resnet.Bottleneck, layers=[3,4,6,3], num_classes=2)
-    else:
-        # secret discriminator
-        Ds = models.resnet50(pretrained=True)
-        num_ftrs = Ds.fc.in_features
-        Ds.fc = nn.Linear(num_ftrs, 2)
+    # secret discriminator
+    Ds = models.resnet50(pretrained=True)
+    num_ftrs = Ds.fc.in_features
+    Ds.fc = nn.Linear(num_ftrs, 2)
 
-        # real/fake discriminator
+    # real/fake discriminator
+    if hparams.use_real_fake_discriminator:
         Drf = models.resnet50(pretrained=False)
         num_ftrs = Drf.fc.in_features
         Drf.fc = nn.Linear(num_ftrs, 2)
+    else:
+        Drf = None
 
     Ds.to(hparams.device)
     Ds_optimizer = optim.Adam(Ds.parameters(), lr=hparams.ds_lr, betas=(beta1, beta2))
 
-    Drf.to(hparams.device)
-    Drf_optimizer = optim.Adam(Drf.parameters(), lr=hparams.drf_lr, betas=(beta1, beta2))
+    if not Drf is None:
+        Drf.to(hparams.device)
+        Drf_optimizer = optim.Adam(Drf.parameters(), lr=hparams.drf_lr, betas=(beta1, beta2))
+    else:
+        Drf_optimizer = None
 
     print("loading datasets ...")
     celeba_traindataset = celeba.CelebADataset(
@@ -108,9 +103,9 @@ def run_experiment(hparams, writer):
 
     # load fixed discriminators
     print("loading fixed discriminators ...")
-    Ds_fix = load_fixed_classifier('artifacts/classifiers/discriminator_secret_5.h5')
+    Ds_fix = load_fixed_classifier('classifiers/classifier_secret.hdf5')
     Ds_fix.to(hparams.device)
-    Du_fix = load_fixed_classifier('artifacts/classifiers/discriminator_utility_5.h5')
+    Du_fix = load_fixed_classifier('classifiers/classifier_utility.hdf5')
     Du_fix.to(hparams.device)
 
     # TODO
@@ -164,9 +159,12 @@ def save_models(G1, G2, G_w, Ds, Drf, artifacts_path, epoch):
         os.makedirs(artifacts_path)
     torch.save(G1.state_dict(), os.path.join(artifacts_path, "G1_{}.hdf5".format(epoch)))
     torch.save(G2.state_dict(), os.path.join(artifacts_path, "G2_{}.hdf5".format(epoch)))
-    torch.save(G_w.state_dict(), os.path.join(artifacts_path, "G_w_{}.hdf5".format(epoch)))
+    if not G_w is None:
+        torch.save(G_w.state_dict(), os.path.join(artifacts_path, "G_w_{}.hdf5".format(epoch)))
     torch.save(Ds.state_dict(), os.path.join(artifacts_path, "Ds_{}.hdf5".format(epoch)))
-    torch.save(Drf.state_dict(), os.path.join(artifacts_path, "Drf_{}.hdf5".format(epoch)))
+
+    if not Drf is None:
+        torch.save(Drf.state_dict(), os.path.join(artifacts_path, "Drf_{}.hdf5".format(epoch)))
 
 def fit(G1, G2, G_w, Ds, Drf, G_optimizer, Ds_optimizer, Drf_optimizer, trainloader, hparams, writer):
     global training_batch_counter
@@ -209,28 +207,30 @@ def fit(G1, G2, G_w, Ds, Drf, G_optimizer, Ds_optimizer, Drf_optimizer, trainloa
         Ds_optimizer.step()
 
         # update real/fake predictor parameters
-        images_1 = G1(images, z1)
-        images_2 = G2(images_1, z1)
-        real_pred = Drf(images)
-        fake_pred = Drf(images_2)
-        real_true = torch.full((len(images),), 1.0).long().to(hparams.device)
-        fake_true = torch.full((len(images_2), ), 0.0).long().to(hparams.device)
-        rf_pred = torch.cat((real_pred, fake_pred), dim=0)
-        rf_true = torch.cat((real_true, fake_true), dim=0)
-        d_real_fake_loss = real_fake_loss_function(rf_pred, rf_true)
+        if not Drf is None:
+            images_1 = G1(images, z1)
+            images_2 = G2(images_1, z1)
+            real_pred = Drf(images)
+            fake_pred = Drf(images_2)
+            real_true = torch.full((len(images),), 1.0).long().to(hparams.device)
+            fake_true = torch.full((len(images_2), ), 0.0).long().to(hparams.device)
+            rf_pred = torch.cat((real_pred, fake_pred), dim=0)
+            rf_true = torch.cat((real_true, fake_true), dim=0)
+            d_real_fake_loss = real_fake_loss_function(rf_pred, rf_true)
 
-        Drf_optimizer.zero_grad()
-        d_real_fake_loss.backward()
-        Drf_optimizer.step()
+            Drf_optimizer.zero_grad()
+            d_real_fake_loss.backward()
+            Drf_optimizer.step()
 
         # train generators
         images_1 = G1(images, z1)
         secret_pred_1 = Ds(images_1)
         images_2 = G2(images_1, z2)
 
-        fake_pred = Drf(images_2)
-        fake_fool = torch.full((len(images_2),), 1.0).long().to(hparams.device)
-        g_real_fake_loss = real_fake_loss_function(fake_pred, fake_fool)
+        if not Drf is None:
+            fake_pred = Drf(images_2)
+            fake_fool = torch.full((len(images_2),), 1.0).long().to(hparams.device)
+            g_real_fake_loss = real_fake_loss_function(fake_pred, fake_fool)
 
         if hparams.use_weighted_squared_error:
             SE_w = G_w(images)
@@ -239,7 +239,10 @@ def fit(G1, G2, G_w, Ds, Drf, G_optimizer, Ds_optimizer, Drf_optimizer, trainloa
             rc_loss = mean_squared_error(images, images_2)
 
         secret_loss_g  = entropy_loss_function(secret_pred_1)
-        generator_loss = hparams.alpha * rc_loss - hparams.beta * secret_loss_g + hparams.gamma * g_real_fake_loss
+        generator_loss = hparams.alpha * rc_loss - hparams.beta * secret_loss_g
+        
+        if not Drf is None:
+            generator_loss = generator_loss + hparams.gamma * g_real_fake_loss
 
         # update parameters
         G_optimizer.zero_grad()
@@ -250,8 +253,9 @@ def fit(G1, G2, G_w, Ds, Drf, G_optimizer, Ds_optimizer, Drf_optimizer, trainloa
         # log stuff
         writer.add_scalar('generator_loss/rc_loss', hparams.alpha * rc_loss.item(), training_batch_counter)
         writer.add_scalar('generator_loss/secret_loss', hparams.beta * secret_loss_g.item(), training_batch_counter)
-        writer.add_scalar('generator_loss/real_fake_loss', hparams.gamma * g_real_fake_loss.item(), training_batch_counter)
-        writer.add_scalar('discriminator_loss/real_fake_loss', d_real_fake_loss.item(), training_batch_counter)
+        if not Drf is None:
+            writer.add_scalar('generator_loss/real_fake_loss', hparams.gamma * g_real_fake_loss.item(), training_batch_counter)
+            writer.add_scalar('discriminator_loss/real_fake_loss', d_real_fake_loss.item(), training_batch_counter)
         writer.add_scalar('discriminator_loss/secret_loss', d_secret_loss.item(), training_batch_counter)
 
         training_batch_counter = training_batch_counter + 1
@@ -323,7 +327,7 @@ if __name__ == '__main__':
 
     parser.add_argument("--use_additive_noise", type=bool, default=False)
     parser.add_argument("--use_weighted_squared_error", type=bool, default=True)
-    parser.add_argument("--use_real_fake_discriminator", type=bool, default=True)
+    parser.add_argument("--use_real_fake_discriminator", type=bool, default=False)
 
 
     # hyperparameters
