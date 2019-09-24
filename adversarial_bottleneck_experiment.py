@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader, SubsetRandomSampler
 from torchvision import transforms
 import torchvision
 import torchvision.models as models
+import json
 
 from models.unet import UNet
 
@@ -23,7 +24,7 @@ training_batch_counter = 0
 
 def run_experiment(hparams, writer):
     hparams.device = torch.device(hparams.device if torch.cuda.is_available() else "cpu")
-    artifacts_path = os.path.join('artifacts', hparams.experiment_name)
+    experiment_path = os.path.join('artifacts', hparams.experiment_name)
 
     beta1          = 0.5
     beta2          = 0.99
@@ -98,14 +99,14 @@ def run_experiment(hparams, writer):
                 celeba.ToTensor(),
             ]))
 
-    trainloader = DataLoader(celeba_traindataset, batch_size=hparams.batch_size, num_workers=8, shuffle=True)
-    validloader = DataLoader(celeba_validdataset, batch_size=hparams.batch_size, num_workers=8)
+    trainloader = DataLoader(celeba_traindataset, batch_size=hparams.batch_size, num_workers=10, shuffle=True)
+    validloader = DataLoader(celeba_validdataset, batch_size=hparams.batch_size, num_workers=10)
 
     # load fixed discriminators
     print("loading fixed discriminators ...")
-    Ds_fix = load_fixed_classifier('classifiers/classifier_secret.hdf5')
+    Ds_fix = load_fixed_classifier('classifiers/classifier_secret.hdf5', hparams.device)
     Ds_fix.to(hparams.device)
-    Du_fix = load_fixed_classifier('classifiers/classifier_utility.hdf5')
+    Du_fix = load_fixed_classifier('classifiers/classifier_utility.hdf5', hparams.device)
     Du_fix.to(hparams.device)
 
     # TODO
@@ -130,41 +131,40 @@ def run_experiment(hparams, writer):
 
         names = ['real images', 'representations', 'fake_images']
         for i, name in enumerate(names):
-            grid = torchvision.utils.make_grid(result[i])
-            writer.add_image('train/' + name, grid, 0)
+        #    grid = torchvision.utils.make_grid(result[i])
+        #    writer.add_image('train/' + name, grid, 0)
 
             grid = torchvision.utils.make_grid(val_result[i])
             writer.add_image('valid/' + name, grid, 0)
 
         if hparams.use_weighted_squared_error:
-            grid = torchvision.utils.make_grid(result[3])
-            writer.add_image("train/weights", grid, 0)
+        #    grid = torchvision.utils.make_grid(result[3])
+        #    writer.add_image("train/weights", grid, 0)
 
             grid = torchvision.utils.make_grid(val_result[3])
             writer.add_image("valid/weights", grid, 0)
 
         # save stuff
-        save_models(G1, G2, G_w, Ds, Drf, artifacts_path, i_epoch)
+        save_models(G1, G2, G_w, Ds, Drf, experiment_path) #, i_epoch)
 
-def load_fixed_classifier(weight_path):
+
+def load_fixed_classifier(weight_path, device):
     classifier = models.resnet50(pretrained=True)
     num_ftrs = classifier.fc.in_features
     classifier.fc = nn.Linear(num_ftrs, 2)
-    classifier.load_state_dict(torch.load(weight_path))
+    classifier.load_state_dict(torch.load(weight_path, map_location=device))
 
     return classifier
 
-def save_models(G1, G2, G_w, Ds, Drf, artifacts_path, epoch):
-    if not os.path.exists(artifacts_path):
-        os.makedirs(artifacts_path)
-    torch.save(G1.state_dict(), os.path.join(artifacts_path, "G1_{}.hdf5".format(epoch)))
-    torch.save(G2.state_dict(), os.path.join(artifacts_path, "G2_{}.hdf5".format(epoch)))
+def save_models(G1, G2, G_w, Ds, Drf, experiment_path): #, epoch):
+    torch.save(G1.state_dict(), os.path.join(experiment_path, "G1.hdf5"))
+    torch.save(G2.state_dict(), os.path.join(experiment_path, "G2.hdf5"))
     if not G_w is None:
-        torch.save(G_w.state_dict(), os.path.join(artifacts_path, "G_w_{}.hdf5".format(epoch)))
-    torch.save(Ds.state_dict(), os.path.join(artifacts_path, "Ds_{}.hdf5".format(epoch)))
+        torch.save(G_w.state_dict(), os.path.join(experiment_path, "G_w.hdf5"))
+    torch.save(Ds.state_dict(), os.path.join(experiment_path, "Ds.hdf5"))
 
     if not Drf is None:
-        torch.save(Drf.state_dict(), os.path.join(artifacts_path, "Drf_{}.hdf5".format(epoch)))
+        torch.save(Drf.state_dict(), os.path.join(experiment_path, "Drf.hdf5"))
 
 def fit(G1, G2, G_w, Ds, Drf, G_optimizer, Ds_optimizer, Drf_optimizer, trainloader, hparams, writer):
     global training_batch_counter
@@ -304,36 +304,52 @@ def validate(G1, G2, G_w, Ds_fix, Du_fix, validationloader, hparams):
     else:
         return (secret_acc, utility_acc), (images, images_1, images_2)
 
+def str2bool(v):
+    if isinstance(v, bool):
+       return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
 
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument("--device", type=str, default='cuda:0')
     parser.add_argument("--experiment_name", type=str, default='default')
-    parser.add_argument("--batch_size", type=int, default=16)
-    parser.add_argument("--nb_train_batches", type=int, default=500)
-    parser.add_argument("--nb_valid_batches", type=int, default=100)
+    parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument("--nb_train_batches", type=int, default=2000)
+    parser.add_argument("--nb_valid_batches", type=int, default=200)
     parser.add_argument("--max_epochs", type=int, default=200)
 
     parser.add_argument("--g_lr", type=float, default=0.0002)
     parser.add_argument("--ds_lr", type=float, default=0.0002)
     parser.add_argument("--drf_lr", type=float, default=0.0002)
     parser.add_argument("--noise_dim", type=int, default=100)
-    parser.add_argument("--weight_budget", type=int, default=0.10) #3000)
+    parser.add_argument("--weight_budget", type=int, default=0.10)
     parser.add_argument("--lambd", type=float, default=1000.0)
 
     parser.add_argument("--alpha", type=float, default=100.0)
     parser.add_argument("--beta", type=float, default=1.0)
     parser.add_argument("--gamma", type=float, default=1.0)
 
-    parser.add_argument("--use_additive_noise", type=bool, default=False)
-    parser.add_argument("--use_weighted_squared_error", type=bool, default=True)
-    parser.add_argument("--use_real_fake_discriminator", type=bool, default=False)
+    parser.add_argument("--use_additive_noise", type=str2bool, nargs='?', const=True, default=False)
+    parser.add_argument("--use_weighted_squared_error", type=str2bool, nargs='?', const=True, default=False)
+    parser.add_argument("--use_real_fake_discriminator", type=str2bool, nargs='?', const=True, default=False)
 
 
     # hyperparameters
 
     hparams = parser.parse_args()
 
-    writer = SummaryWriter(log_dir = os.path.join('artifacts', hparams.experiment_name))
+    # save hparams
+    experiment_path = os.path.join('artifacts', hparams.experiment_name)
+    if not os.path.exists(experiment_path):
+        os.makedirs(experiment_path)
+    with open(os.path.join(experiment_path, "hparams.json"), 'w') as f:
+        json.dump(hparams.__dict__, f, indent=2)
+
+    writer = SummaryWriter(log_dir = experiment_path)
 
     run_experiment(hparams, writer)
