@@ -12,6 +12,7 @@ from torchvision import transforms
 import torchvision
 import torchvision.models as models
 import json
+import random
 
 from models.unet import UNet
 
@@ -67,7 +68,7 @@ def run_experiment(hparams, writer):
 
     # real/fake discriminator
     if hparams.use_real_fake_discriminator:
-        Drf = models.resnet50(pretrained=False)
+        Drf = models.resnet50(pretrained=True)
         num_ftrs = Drf.fc.in_features
         Drf.fc = nn.Linear(num_ftrs, 2)
     else:
@@ -109,9 +110,40 @@ def run_experiment(hparams, writer):
     Du_fix = load_fixed_classifier('classifiers/classifier_utility.hdf5', hparams.device)
     Du_fix.to(hparams.device)
 
+    # initialize models with previous training weights
+
+    if hparams.resume_training:
+        #print("resume training ...")
+        #with open(os.path.join(experiment_path, 'train_state.json'), 'r') as f:
+        #    train_state = json.load(f)
+
+        #print("restore training state ... ")
+        #global training_batch_counter
+        #training_batch_counter = train_state['training_batch_counter']
+        #start_epoch = train_state['end_epoch']
+        #end_epoch = start_epoch + hparams.max_epochs
+
+        #print("starting at batch {} and epoch {} ...".format(training_batch_counter, start_epoch))
+
+        print("load previous models weights ...")
+        G1.load_state_dict(torch.load(os.path.join(experiment_path, 'G1.hdf5')))
+        G2.load_state_dict(torch.load(os.path.join(experiment_path, 'G2.hdf5')))
+        if G_w is not None:
+            G_w.load_state_dict(torch.load(os.path.join(experiment_path, 'G_w.hdf5')))
+        Ds.load_state_dict(torch.load(os.path.join(experiment_path, 'Ds.hdf5')))
+        if Drf is not None:
+            Drf.load_state_dict(torch.load(os.path.join(experiment_path, 'Drf.hdf5')))
+    #else:
+        #start_epoch = 0
+        #end_epoch = hparams.max_epochs
+
     # TODO
-    print("training ...")
+    #print("training ...")
+    #print("start_epoch: ", start_epoch)
+    #print("end_epoch: ", end_epoch)
+    #print("training_batch_counter: ", training_batch_counter)
     for i_epoch in range(hparams.max_epochs):
+
         train_indices = np.random.choice(list(range(len(celeba_traindataset))), size=hparams.nb_train_batches*hparams.batch_size, replace=False)
         valid_indices = np.random.choice(list(range(len(celeba_validdataset))), size=hparams.nb_valid_batches*hparams.batch_size, replace=False)
         trainsampler = SubsetRandomSampler(train_indices)
@@ -146,6 +178,14 @@ def run_experiment(hparams, writer):
 
         # save stuff
         save_models(G1, G2, G_w, Ds, Drf, experiment_path) #, i_epoch)
+
+        # save training state
+        #with open(os.path.join(experiment_path, 'train_state.json'), 'w') as f:
+        #    train_state = {
+        #        'training_batch_counter': training_batch_counter,
+        #        'end_epoch': i_epoch+1
+        #    }
+        #    json.dump(train_state, f, indent=2)
 
 
 def load_fixed_classifier(weight_path, device):
@@ -208,29 +248,27 @@ def fit(G1, G2, G_w, Ds, Drf, G_optimizer, Ds_optimizer, Drf_optimizer, trainloa
 
         # update real/fake predictor parameters
         if not Drf is None:
-            images_1 = G1(images, z1)
-            images_2 = G2(images_1, z1)
-            real_pred = Drf(images)
-            fake_pred = Drf(images_2)
-            real_true = torch.full((len(images),), 1.0).long().to(hparams.device)
-            fake_true = torch.full((len(images_2), ), 0.0).long().to(hparams.device)
-            rf_pred = torch.cat((real_pred, fake_pred), dim=0)
-            rf_true = torch.cat((real_true, fake_true), dim=0)
-            d_real_fake_loss = real_fake_loss_function(rf_pred, rf_true)
+            secret_pred = Drf(images)
+            d_real_secret_loss = secret_loss_function(secret_pred, secret.view(len(secret_pred)))
 
             Drf_optimizer.zero_grad()
-            d_real_fake_loss.backward()
+            d_real_secret_loss.backward()
             Drf_optimizer.step()
 
         # train generators
+        if not Drf is None:
+            z2n = torch.randn(len(images), hparams.noise_dim//2).to(hparams.device)
+            fake_secret = torch.randint(0, 2, (len(images), 1)).float().to(hparams.device)
+            z2l = fake_secret.repeat(1, hparams.noise_dim//2).to(hparams.device)
+            z2 = torch.cat((z2n, z2l), dim=1)
+
         images_1 = G1(images, z1)
         secret_pred_1 = Ds(images_1)
         images_2 = G2(images_1, z2)
 
         if not Drf is None:
-            fake_pred = Drf(images_2)
-            fake_fool = torch.full((len(images_2),), 1.0).long().to(hparams.device)
-            g_real_fake_loss = real_fake_loss_function(fake_pred, fake_fool)
+            fake_secret_pred = Drf(images_2)
+            g_fake_secret_loss = secret_loss_function(fake_secret_pred, fake_secret.long().view(len(fake_secret_pred)))
 
         if hparams.use_weighted_squared_error:
             SE_w = G_w(images)
@@ -242,7 +280,7 @@ def fit(G1, G2, G_w, Ds, Drf, G_optimizer, Ds_optimizer, Drf_optimizer, trainloa
         generator_loss = hparams.alpha * rc_loss - hparams.beta * secret_loss_g
         
         if not Drf is None:
-            generator_loss = generator_loss + hparams.gamma * g_real_fake_loss
+            generator_loss = generator_loss + hparams.gamma * g_fake_secret_loss
 
         # update parameters
         G_optimizer.zero_grad()
@@ -254,8 +292,8 @@ def fit(G1, G2, G_w, Ds, Drf, G_optimizer, Ds_optimizer, Drf_optimizer, trainloa
         writer.add_scalar('generator_loss/rc_loss', hparams.alpha * rc_loss.item(), training_batch_counter)
         writer.add_scalar('generator_loss/secret_loss', hparams.beta * secret_loss_g.item(), training_batch_counter)
         if not Drf is None:
-            writer.add_scalar('generator_loss/real_fake_loss', hparams.gamma * g_real_fake_loss.item(), training_batch_counter)
-            writer.add_scalar('discriminator_loss/real_fake_loss', d_real_fake_loss.item(), training_batch_counter)
+            writer.add_scalar('generator_loss/fake_secret_loss', hparams.gamma * g_fake_secret_loss.item(), training_batch_counter)
+            writer.add_scalar('discriminator_loss/real_secret_loss', d_real_secret_loss.item(), training_batch_counter)
         writer.add_scalar('discriminator_loss/secret_loss', d_secret_loss.item(), training_batch_counter)
 
         training_batch_counter = training_batch_counter + 1
@@ -327,7 +365,7 @@ if __name__ == '__main__':
     parser.add_argument("--ds_lr", type=float, default=0.0002)
     parser.add_argument("--drf_lr", type=float, default=0.0002)
     parser.add_argument("--noise_dim", type=int, default=100)
-    parser.add_argument("--weight_budget", type=int, default=0.10)
+    parser.add_argument("--weight_budget", type=float, default=0.10)
     parser.add_argument("--lambd", type=float, default=1000.0)
 
     parser.add_argument("--alpha", type=float, default=100.0)
@@ -337,11 +375,18 @@ if __name__ == '__main__':
     parser.add_argument("--use_additive_noise", type=str2bool, nargs='?', const=True, default=False)
     parser.add_argument("--use_weighted_squared_error", type=str2bool, nargs='?', const=True, default=False)
     parser.add_argument("--use_real_fake_discriminator", type=str2bool, nargs='?', const=True, default=False)
-
+    parser.add_argument("--resume_training", type=str2bool, nargs='?', const=False, default=False)
+    parser.add_argument("--seed", type=int, default=-1)
 
     # hyperparameters
 
     hparams = parser.parse_args()
+
+    if not hparams.seed == -1:
+        print("setting random seed to {} ...".format(hparams.seed))
+        np.random.seed(hparams.seed)
+        torch.manual_seed(hparams.seed)
+        random.seed(hparams.seed)
 
     # save hparams
     experiment_path = os.path.join('artifacts', hparams.experiment_name)
