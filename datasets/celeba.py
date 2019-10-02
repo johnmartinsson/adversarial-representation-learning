@@ -1,9 +1,10 @@
 from __future__ import print_function, division
+import tqdm
 import os
 import torch
 import pandas as pd
 import numpy as np
-from skimage import io, transform
+import skimage
 import numpy as np
 import matplotlib.pyplot as plt
 from torch.utils.data import Dataset, DataLoader
@@ -20,17 +21,56 @@ warnings.filterwarnings("ignore")
 class CelebADataset(Dataset):
     """CelebADataset dataset."""
 
-    def __init__(self, ann_file, image_dir, transform=None):
+    def __init__(self, split, transform=None, input_shape=(224, 224), in_memory=False, utility_attr='Male', secret_attr='Smiling', normalize=False):
         """
         Args:
-            ann_file (string): Path to the file with annotations.
+            split (string): which split to load.
             image_dir (string): Directory with all the images.
             transform (callable, optional): Optional transform to be applied
                 on a sample.
         """
+        if split == 'train':
+            ann_file = './data/training_annotations.csv'
+        if split == 'valid':
+            ann_file = './data/validation_annotations.csv'
+        if split == 'test':
+            ann_file = './data/test_annotations.csv'
+
         self.ann_frame = pd.read_csv(ann_file)
-        self.image_dir = image_dir
+        self.image_dir = './data/imgs'
         self.transform = transform
+        self.in_memory = in_memory
+        self.input_shape = input_shape
+        self.utility_attr = utility_attr
+        self.secret_attr = secret_attr
+
+        if self.in_memory:
+            # check shape of first image and assume same for all
+            (width, height) = self.input_shape
+            # load images into memory
+            print("loading images into memory ...")
+
+            image_data_file = './data/celeba_images_{}_{}x{}.npy'.format(split, width, height)
+            if not os.path.exists(image_data_file):
+                self.images = np.empty((len(self.ann_frame), width, height, 3))
+                for idx in tqdm.tqdm(range(len(self.ann_frame))):
+                    img_name = os.path.join(self.image_dir,
+                                            self.ann_frame.iloc[idx, 1])
+                    image = skimage.io.imread(img_name)
+                    image = skimage.transform.resize(image, input_shape)
+
+                    self.images[idx] = image
+                np.save(image_data_file, self.images)
+            else:
+                self.images = np.load(image_data_file)
+
+        if normalize:
+            mean = np.mean(self.images, axis=(0,1,2))
+            std  = np.std(self.images, axis=(0,1,2))
+            self.images = self.images - mean
+            self.images = self.images / std
+            self.mean = mean
+            self.std = std
 
     def __len__(self):
         return len(self.ann_frame)
@@ -39,13 +79,18 @@ class CelebADataset(Dataset):
         if torch.is_tensor(idx):
             idx = idx.tolist()
 
-        img_name = os.path.join(self.image_dir,
-                                self.ann_frame.iloc[idx, 1])
-        image = io.imread(img_name)
+        if self.in_memory:
+            image = self.images[idx]
+        else:
+            img_name = os.path.join(self.image_dir,
+                                    self.ann_frame.iloc[idx, 1])
+            image = skimage.io.imread(img_name)
+            image = skimage.transform.resize(image, self.input_shape)
+
         annotations = self.ann_frame.iloc[idx, 2:]
 
-        utility = np.array([(float(annotations['Male']) + 1)/2])
-        secret  = np.array([(float(annotations['Smiling']) + 1)/2])
+        utility = np.array([(float(annotations[self.utility_attr]) + 1)/2])
+        secret  = np.array([(float(annotations[self.secret_attr]) + 1)/2])
 
         sample = {'image': image, 'utility': utility, 'secret':secret}
 
@@ -81,7 +126,7 @@ class Rescale(object):
 
         new_h, new_w = int(new_h), int(new_w)
 
-        img = transform.resize(image, (new_h, new_w))
+        img = skimage.transform.resize(image, (new_h, new_w))
 
         utility = sample['utility']
         secret  = sample['secret']
