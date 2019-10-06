@@ -6,11 +6,11 @@ from models.unet import UNet
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-def get_generator_model(name, device, noise_dim, additive_noise, weights_path=None):
+def get_generator_model(name, device, noise_dim, additive_noise, image_width=64, image_height=64, weights_path=None):
     if name == 'unet_weight':
-        model = UNet(3, 1, [8, 16, 32, 64, 128], 64, 64, noise_dim, 'sigmoid', additive_noise)
+        model = UNet(3, 1, [8, 16, 32, 64, 128], image_width, image_height, noise_dim, 'sigmoid', additive_noise)
     if name == 'unet_small':
-        model = UNet(3, 3, [16, 32, 64, 128, 256], 64, 64, noise_dim, 'sigmoid', additive_noise)
+        model = UNet(3, 3, [16, 32, 64, 128, 256], image_width, image_height, noise_dim, 'sigmoid', additive_noise)
 
     if not weights_path is None:
         model.load_state_dict(torch.load(weights_path, map_location=device))

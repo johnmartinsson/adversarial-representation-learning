@@ -39,11 +39,11 @@ def run_experiment(hparams, writer):
 
     # initialize transformation networks
     print("initialize networks ...")
-    G = utils.get_generator_model(hparams.generator_name, hparams.device, hparams.noise_dim, hparams.use_additive_noise)
+    G = utils.get_generator_model(hparams.generator_name, hparams.device, hparams.noise_dim, hparams.use_additive_noise, image_width=hparams.image_width, image_height=hparams.image_height)
     print("generator: {} parameters".format(utils.count_parameters(G)))
 
     if hparams.use_weighted_squared_error:
-        G_w = utils.get_generator_model('unet_weight', hparams.device, None, hparams.use_additive_noise)
+        G_w = utils.get_generator_model('unet_weight', hparams.device, None, hparams.use_additive_noise, image_width=hparams.image_width, image_height=hparams.image_height)
         print("G_w: {} parameters".format(utils.count_parameters(G_w)))
         G_optimizer = optim.Adam(
             list(G.parameters()) + list(G_w.parameters()), lr=hparams.g_lr, betas=(beta1, beta2))

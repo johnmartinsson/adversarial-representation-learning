@@ -22,7 +22,7 @@ import loss_functions
 
 import matplotlib.pyplot as plt
 
-#training_batch_counter = 0
+training_batch_counter = 0
 
 def run_experiment(hparams, writer):
     hparams.device = torch.device(hparams.device if torch.cuda.is_available() else "cpu")
@@ -195,7 +195,7 @@ def save_models(G1, G2, G_w, Ds, Drf, experiment_path): #, epoch):
         torch.save(Drf.state_dict(), os.path.join(experiment_path, "Drf.hdf5"))
 
 def fit(G1, G2, G_w, Ds, Drf, G_optimizer, Ds_optimizer, Drf_optimizer, trainloader, hparams, writer):
-    #global training_batch_counter
+    global training_batch_counter
     # define loss functions
     secret_loss_function = torch.nn.CrossEntropyLoss()
     real_fake_loss_function = torch.nn.CrossEntropyLoss()
@@ -205,7 +205,7 @@ def fit(G1, G2, G_w, Ds, Drf, G_optimizer, Ds_optimizer, Drf_optimizer, trainloa
         #penalty = hparams.lambd*F.relu(torch.mean(w)-C)
         penalty = hparams.lambd*torch.pow(F.relu(torch.mean(w)-C), 2)
 
-        writer.add_scalar('loss/weights', torch.mean(w).cpu().detach().numpy()) #, training_batch_counter)
+        writer.add_scalar('loss/weights', torch.mean(w).cpu().detach().numpy(), training_batch_counter)
         
         w = torch.full(w.shape, 1.0).to(hparams.device) - w # broadcast
         return torch.mean(torch.pow(x1-x2, 2) * w) + penalty
@@ -214,7 +214,7 @@ def fit(G1, G2, G_w, Ds, Drf, G_optimizer, Ds_optimizer, Drf_optimizer, trainloa
         # penalize area larger than C
         penalty = hparams.lambd*torch.pow(F.relu(torch.mean(w)-C), 2)
 
-        writer.add_scalar('loss/weights', torch.mean(w).cpu().detach().numpy()) #, training_batch_counter)
+        writer.add_scalar('loss/weights', torch.mean(w).cpu().detach().numpy(), training_batch_counter)
         
         w = torch.full(w.shape, 1.0).to(hparams.device) - w # broadcast
         return torch.mean(torch.abs(x1-x2) * w) + penalty
@@ -302,16 +302,16 @@ def fit(G1, G2, G_w, Ds, Drf, G_optimizer, Ds_optimizer, Drf_optimizer, trainloa
 
         # log stuff
         #writer.add_scalar('generator_loss/rc_loss', hparams.alpha * rc_loss.item(), training_batch_counter)
-        writer.add_scalar('generator_loss/rc_loss', rc_loss.item()) #, training_batch_counter)
+        writer.add_scalar('generator_loss/rc_loss', rc_loss.item(), training_batch_counter)
         #writer.add_scalar('generator_loss/secret_loss', hparams.beta * secret_loss_g.item(), training_batch_counter)
-        writer.add_scalar('generator_loss/secret_loss', secret_loss_g.item()) #, training_batch_counter)
+        writer.add_scalar('generator_loss/secret_loss', secret_loss_g.item(), training_batch_counter)
         if not Drf is None:
             #writer.add_scalar('generator_loss/fake_secret_loss', hparams.gamma * g_fake_secret_loss.item(), training_batch_counter)
-            writer.add_scalar('generator_loss/fake_secret_loss', g_fake_secret_loss.item()) #, training_batch_counter)
-            writer.add_scalar('discriminator_loss/real_secret_loss', d_real_secret_loss.item()) #, training_batch_counter)
-        writer.add_scalar('discriminator_loss/secret_loss', d_secret_loss.item()) #, training_batch_counter)
+            writer.add_scalar('generator_loss/fake_secret_loss', g_fake_secret_loss.item(), training_batch_counter)
+            writer.add_scalar('discriminator_loss/real_secret_loss', d_real_secret_loss.item(), training_batch_counter)
+        writer.add_scalar('discriminator_loss/secret_loss', d_secret_loss.item(), training_batch_counter)
 
-        #training_batch_counter = training_batch_counter + 1
+        training_batch_counter = training_batch_counter + 1
 
     if hparams.use_weighted_squared_error:
         return images, images_1, images_2, SE_w

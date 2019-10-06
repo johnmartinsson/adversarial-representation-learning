@@ -44,11 +44,103 @@ def build_args_2(gpu, experiment_id):
 
     return args, experiment_name
 
+def build_args_3(gpu, experiment_id):
+    alpha = np.random.uniform(1, 20)
+    ds_lr = np.random.choice([1e-2, 1e-3, 1e-4])
+    g_lr = np.random.choice([1e-2, 1e-3, 1e-4])
+
+    experiment_name = 'random_search_3/{}'.format(experiment_id)
+    args = [
+        'adversarial_bottleneck_experiment.py',
+        '--alpha', str(alpha),
+        '--ds_lr', str(ds_lr),
+        '--g_lr', str(g_lr),
+        '--device', gpu,
+        '--experiment_name', experiment_name,
+        '--max_epochs', str(100),
+        '--use_entropy_loss', 'True',
+    ]
+
+    return args, experiment_name
+
+
+def build_args_4(gpu, experiment_id):
+    alpha = np.random.uniform(1, 20)
+    ds_lr = np.random.choice([1e-2, 1e-3, 1e-4])
+    g_lr = np.random.choice([1e-2, 1e-3, 1e-4])
+    weight_budget = np.random.choice([0.5, 0.10, 0.15, 0.20, 0.30])
+
+    experiment_name = 'random_search_4/{}'.format(experiment_id)
+    args = [
+        'adversarial_bottleneck_experiment.py',
+        '--alpha', str(alpha),
+        '--ds_lr', str(ds_lr),
+        '--g_lr', str(g_lr),
+        '--device', gpu,
+        '--experiment_name', experiment_name,
+        '--max_epochs', str(100),
+        '--use_weighted_squared_error', 'True',
+        '--weight_budget', str(weight_budget),
+        '--use_entropy_loss', 'True',
+    ]
+
+    return args, experiment_name
+
+def build_args_no_bottleneck(gpu, experiment_id):
+    alpha = np.random.uniform(0.5, 5)
+    ds_lr = np.random.choice([1e-2, 1e-3, 1e-4])
+    g_lr  = np.random.choice([1e-2, 1e-3, 1e-4])
+
+    experiment_name = 'random_search_no_bottleneck/{}'.format(experiment_id)
+    args = [
+        'adversarial_experiment.py',
+        '--alpha', str(alpha),
+        '--ds_lr', str(ds_lr),
+        '--g_lr', str(g_lr),
+        '--device', gpu,
+        '--experiment_name', experiment_name,
+        '--max_epochs', str(100),
+    ]
+
+    return args, experiment_name
+
+def build_args_no_bottleneck_mwae(gpu, experiment_id):
+    alpha = np.random.uniform(0.0, 10)
+    ds_lr = 1e-2 #np.random.choice([1e-2, 1e-3, 1e-4])
+    g_lr  = 1e-3 #np.random.choice([1e-2, 1e-3, 1e-4])
+    weight_budget = np.random.choice([0.5, 0.10, 0.15, 0.20, 0.30])
+
+    experiment_name = 'random_search_no_bottleneck_mwae/{}'.format(experiment_id)
+    args = [
+        'adversarial_experiment.py',
+        '--alpha', str(alpha),
+        '--ds_lr', str(ds_lr),
+        '--g_lr', str(g_lr),
+        '--device', gpu,
+        '--experiment_name', experiment_name,
+        '--max_epochs', str(100),
+        '--use_weighted_squared_error', 'True',
+        '--weight_budget', str(weight_budget)
+    ]
+
+    return args, experiment_name
+
+
+
+
 def get_sampling_method(name):
     if name == 'build_args_1':
         return build_args_1
     elif name == 'build_args_2':
         return build_args_2
+    elif name == 'build_args_3':
+        return build_args_3
+    elif name == 'build_args_4':
+        return build_args_4
+    elif name == 'build_args_no_bottleneck':
+        return build_args_no_bottleneck
+    elif name == 'build_args_no_bottleneck_mwae':
+        return build_args_no_bottleneck_mwae
     else:
         raise ValueError("sampling method not supported ...")
     return sampling_method
