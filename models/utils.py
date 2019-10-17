@@ -1,7 +1,25 @@
+import os
 import torch
 import torch.nn as nn
 import torchvision.models as models
 from models.unet import UNet
+
+def save_images(imgs, filter_imgs, artifacts_path, i_epoch):
+    """Saves a grid of generated digits ranging from 0 to n_classes"""
+    nb_samples = 8
+
+    imgs = imgs[:nb_samples]
+    filter_imgs = filter_imgs[:nb_samples]
+    diff_img = imgs-filter_imgs
+    sample_images = torch.cat((imgs, filter_imgs, diff_img))
+    save_dir = os.path.join(artifacts_path, "images")
+    os.makedirs(save_dir, exist_ok=True)
+    save_file = os.path.join(save_dir, "{}.png".format(i_epoch))
+
+    save_image(sample_images.data, save_file, nrow=nb_samples, normalize=True)
+
+def save_model(model, path):
+    torch.save(model.state_dict(), path)
 
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
