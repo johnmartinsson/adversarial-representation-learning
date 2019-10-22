@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torchvision.models as models
 from models.unet import UNet
+from torchvision.utils import save_image
 
 def save_images(imgs, filter_imgs, artifacts_path, i_epoch):
     """Saves a grid of generated digits ranging from 0 to n_classes"""
@@ -10,13 +11,31 @@ def save_images(imgs, filter_imgs, artifacts_path, i_epoch):
 
     imgs = imgs[:nb_samples]
     filter_imgs = filter_imgs[:nb_samples]
-    diff_img = imgs-filter_imgs
+    diff_img = torch.norm(imgs-filter_imgs, dim=1)
+    #diff_img = torch.sum(diff_img, dim=1)
+    diff_img = diff_img.view((diff_img.size(0), 1, diff_img.size(1), diff_img.size(2)))
+    diff_img = torch.cat((diff_img, diff_img, diff_img), dim=1)
     sample_images = torch.cat((imgs, filter_imgs, diff_img))
     save_dir = os.path.join(artifacts_path, "images")
     os.makedirs(save_dir, exist_ok=True)
     save_file = os.path.join(save_dir, "{}.png".format(i_epoch))
 
     save_image(sample_images.data, save_file, nrow=nb_samples, normalize=True)
+
+def save_images_2(imgs, filter_imgs, filter_imgs_0, filter_imgs_1, save_dir, i_batch):
+    """Saves a grid of generated digits ranging from 0 to n_classes"""
+    nb_samples = 8
+
+    imgs = imgs[:nb_samples]
+    filter_imgs = filter_imgs[:nb_samples]
+    filter_imgs_0 = filter_imgs_0[:nb_samples]
+    filter_imgs_1 = filter_imgs_1[:nb_samples]
+    sample_images = torch.cat((imgs, filter_imgs, filter_imgs_0, filter_imgs_1))
+    os.makedirs(save_dir, exist_ok=True)
+    save_file = os.path.join(save_dir, "{}.png".format(i_batch))
+
+    save_image(sample_images.data, save_file, nrow=nb_samples, normalize=True)
+
 
 def save_model(model, path):
     torch.save(model.state_dict(), path)
