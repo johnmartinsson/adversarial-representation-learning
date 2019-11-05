@@ -20,6 +20,7 @@ import models.utils as utils
 from models.encoder import Encoder
 from models.decoder import Decoder
 from models.filter import Filter, ConvFilter
+from models.unet import UNetFilter
 from models.discriminator import Discriminator, ConditionalDiscriminator, ConvDiscriminator
 from models.discriminator import SecretDiscriminator
 
@@ -74,25 +75,34 @@ secret_classifier = utils.get_discriminator_model('resnet_small', num_classes=2,
 utility_classifier = utils.get_discriminator_model('resnet_small', num_classes=2, pretrained=False, device='cuda:0', weights_path='./artifacts/fixed_resnet_small/classifier_utility_{}x{}.h5'.format(opt.img_size, opt.img_size))
 
 # Loss functions
-adversarial_loss = torch.nn.BCELoss()
+adversarial_loss = torch.nn.CrossEntropyLoss() #BCELoss()
 adversarial_rf_loss = torch.nn.CrossEntropyLoss()
 distortion_loss = torch.nn.MSELoss()
 
 # Initialize generator and discriminator
-filter = Filter(opt)
-discriminator = SecretDiscriminator(opt)
+#filter = Filter(opt)
+#discriminator = SecretDiscriminator(opt)
+
+filter = UNetFilter(3, 3, image_width=opt.img_size, image_height=opt.img_size, noise_dim=opt.latent_dim, activation='sigmoid', nb_classes=opt.n_classes, embedding_dim=opt.embedding_dim)
+discriminator = utils.get_discriminator_model('resnet18', num_classes=2, pretrained=True, device='cuda:0')
 
 #generator = Filter(opt)
 #discriminator_rf = ConditionalDiscriminator(opt, out_dim=3, activation=None)
 
 #generator = ConvFilter(opt)
 #discriminator_rf = ConvDiscriminator(opt, out_dim=3, activation=None)
-generator = Filter(opt)
-discriminator_rf = Discriminator(opt, out_dim=3, activation=None)
+#generator = Filter(opt)
+#discriminator_rf = Discriminator(opt, out_dim=3, activation=None)
 
-print("Generator encoder parameters: ", utils.count_parameters(generator.encoder))
-print("Generator decoder parameters: ", utils.count_parameters(generator.decoder))
-print("Discriminator parameters: ", utils.count_parameters(discriminator_rf))
+generator = UNetFilter(3, 3, image_width=opt.img_size, image_height=opt.img_size, noise_dim=opt.latent_dim, activation='sigmoid', nb_classes=opt.n_classes, embedding_dim=opt.embedding_dim)
+discriminator_rf = utils.get_discriminator_model('resnet18', num_classes=3, pretrained=True, device='cuda:0')
+
+print("Generator parameters: ", utils.count_parameters(generator))
+print("Filter parameters: ", utils.count_parameters(filter))
+#print("Generator encoder parameters: ", utils.count_parameters(generator.encoder))
+#print("Generator decoder parameters: ", utils.count_parameters(generator.decoder))
+print("Discriminator secret parameters: ", utils.count_parameters(discriminator))
+print("Discriminator real/fake parameters: ", utils.count_parameters(discriminator_rf))
 
 if cuda:
     filter.cuda()
@@ -186,7 +196,7 @@ def visualize():
 
 def validate():
     running_secret_acc = 0.0
-    #running_secret_adv_acc = 0.0
+    running_secret_gen_acc = 0.0
     running_utility_acc = 0.0
 
     for i_batch, batch in tqdm.tqdm(enumerate(valid_dataloader, 0)):
@@ -200,15 +210,13 @@ def validate():
         batch_size = imgs.shape[0]
         z = Variable(FloatTensor(np.random.normal(0, 1, (batch_size, opt.latent_dim))))
 
-        filter_imgs = filter(imgs, z, secret)
-        #filter_imgs = imgs
+        filter_imgs = filter(imgs, z, secret.long())
 
         if opt.use_real_fake:
             z = Variable(FloatTensor(np.random.normal(0, 1, (batch_size, opt.latent_dim))))
             gen_secret = Variable(LongTensor(np.random.choice([0.0, 1.0], batch_size)))
             filter_imgs = generator(filter_imgs, z, gen_secret)
 
-        #secret_pred_adv  = discriminator(filter_imgs)
         secret_pred_fix  = secret_classifier(filter_imgs)
         utility_pred_fix = utility_classifier(filter_imgs)
 
@@ -220,13 +228,14 @@ def validate():
             return acc
 
         running_secret_acc  += accuracy(secret_pred_fix, secret)
-        #running_secret_adv_acc  += accuracy(secret_pred_adv, secret)
+        running_secret_gen_acc  += accuracy(secret_pred_fix, gen_secret)
         running_utility_acc += accuracy(utility_pred_fix, utility)
 
     secret_acc  = running_secret_acc / len(valid_dataloader)
     utility_acc = running_utility_acc / len(valid_dataloader)
+    gen_secret_acc = running_secret_gen_acc / len(valid_dataloader)
 
-    return secret_acc, utility_acc, imgs, filter_imgs
+    return secret_acc, utility_acc, gen_secret_acc, imgs, filter_imgs
 
 def train(i_epoch):
     for i_batch, batch in tqdm.tqdm(enumerate(train_dataloader)):
@@ -249,14 +258,14 @@ def train(i_epoch):
         z = Variable(FloatTensor(np.random.normal(0, 1, (batch_size, opt.latent_dim))))
 
         # filter a batch of images
-        filter_imgs = filter(imgs, z, secret)
+        filter_imgs = filter(imgs, z, secret.long())
         pred_secret = discriminator(filter_imgs)
 
         # loss measures filters's ability to fool the discriminator under constrained distortion
         ones = Variable(FloatTensor(secret.shape).fill_(1.0), requires_grad=False)
         target = ones-secret.float()
-        target = target.view(target.size(0), -1)
-        f_adversary_loss = adversarial_loss(pred_secret, target)
+        target = target.view(target.size(0)) #, -1)
+        f_adversary_loss = adversarial_loss(pred_secret, target.long())
         f_distortion_loss = distortion_loss(filter_imgs, imgs)
 
         f_loss = f_adversary_loss + opt.lambd * torch.pow(torch.relu(f_distortion_loss-opt.eps), 2)
@@ -273,7 +282,7 @@ def train(i_epoch):
             z1 = Variable(FloatTensor(np.random.normal(0, 1, (batch_size, opt.latent_dim))))
 
             # filter a batch of images
-            filter_imgs = filter(imgs, z1, secret)
+            filter_imgs = filter(imgs, z1, secret.long())
             #filter_imgs = imgs
 
             # sample noise as generator input
@@ -286,7 +295,8 @@ def train(i_epoch):
             gen_imgs = generator(filter_imgs, z2, gen_secret)
 
             # loss measures generator's ability to fool the discriminator
-            pred_secret = discriminator_rf(gen_imgs, gen_secret)
+            #pred_secret = discriminator_rf(gen_imgs, gen_secret)
+            pred_secret = discriminator_rf(gen_imgs)
             g_adversary_loss = adversarial_rf_loss(pred_secret, gen_secret)
             g_distortion_loss = distortion_loss(gen_imgs, imgs)
 
@@ -302,7 +312,7 @@ def train(i_epoch):
         optimizer_d.zero_grad()
 
         pred_secret = discriminator(filter_imgs.detach())
-        d_loss = adversarial_loss(pred_secret, secret)
+        d_loss = adversarial_loss(pred_secret, secret.long())
 
         d_loss.backward()
         optimizer_d.step()
@@ -315,8 +325,8 @@ def train(i_epoch):
             optimizer_d_rf.zero_grad()
 
             c_imgs = torch.cat((imgs, gen_imgs.detach()), axis=1)
-            real_pred_secret = discriminator_rf(imgs, secret.long())
-            fake_pred_secret = discriminator_rf(gen_imgs.detach(), gen_secret)
+            real_pred_secret = discriminator_rf(imgs) #, secret.long())
+            fake_pred_secret = discriminator_rf(gen_imgs.detach()) #, gen_secret)
 
             fake_secret = Variable(LongTensor(fake_pred_secret.size(0)).fill_(2.0), requires_grad=False)
             d_rf_loss_real = adversarial_rf_loss(real_pred_secret, secret.long())
@@ -362,7 +372,7 @@ def train_2(i_epoch):
             gen_imgs = generator(imgs, z, gen_secret)
 
             # loss measures generator's ability to fool the discriminator
-            pred_secret = discriminator_rf(gen_imgs, gen_secret)
+            pred_secret = discriminator_rf(gen_imgs) #, gen_secret)
             g_adversary_loss = adversarial_rf_loss(pred_secret, gen_secret)
             g_distortion_loss = distortion_loss(gen_imgs, imgs)
 
@@ -378,8 +388,8 @@ def train_2(i_epoch):
             optimizer_d_rf.zero_grad()
 
             c_imgs = torch.cat((imgs, gen_imgs.detach()), axis=1)
-            real_pred_secret = discriminator_rf(imgs, secret.long())
-            fake_pred_secret = discriminator_rf(gen_imgs.detach(), gen_secret)
+            real_pred_secret = discriminator_rf(imgs) #, secret.long())
+            fake_pred_secret = discriminator_rf(gen_imgs.detach()) #, gen_secret)
 
             fake_secret = Variable(LongTensor(fake_pred_secret.size(0)).fill_(2.0), requires_grad=False)
             d_rf_loss_real = adversarial_rf_loss(real_pred_secret, secret.long())
@@ -404,13 +414,15 @@ def train_2(i_epoch):
 if opt.mode == 'train':
     for i_epoch in range(opt.n_epochs):
         # validate models
-        secret_acc, utility_acc, imgs, filter_imgs = validate()
+        secret_acc, utility_acc, gen_secret_acc, imgs, filter_imgs = validate()
         print("secret_acc: ", secret_acc)
+        print("gen secret acc: ", gen_secret_acc)
         print("utility_acc: ", utility_acc)
 
         # log results
         writer.add_scalar('valid/secret_acc', secret_acc, i_epoch)
         writer.add_scalar('valid/utility_acc', utility_acc, i_epoch)
+        writer.add_scalar('valid/gen_secret_acc', gen_secret_acc, i_epoch)
         utils.save_images(imgs, filter_imgs, artifacts_path, i_epoch)
 
         # train models
