@@ -162,6 +162,10 @@ optimizer_d_rf = torch.optim.Adam(discriminator_rf.parameters(), lr=opt.lr, beta
 FloatTensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
 LongTensor = torch.cuda.LongTensor if cuda else torch.LongTensor
 
+#def evaluate():
+#    for i_batch, batch in tqdm.tqdm(enumerate(test_dataloader, 0)):
+
+
 def visualize():
     for i_batch, batch in tqdm.tqdm(enumerate(valid_dataloader, 0)):
         imgs  = batch['image'].cuda()
@@ -172,15 +176,12 @@ def visualize():
 
         # Sample noise as filter input
         batch_size = imgs.shape[0]
-        #imgs = imgs[:1].repeat((batch_size, 1, 1, 1))
-        #secret = secret[:1].repeat((batch_size))
-        print(secret)
 
         z = Variable(FloatTensor(np.random.normal(0, 1, (batch_size, opt.latent_dim))))
         z1 = Variable(FloatTensor(np.random.normal(0, 1, (batch_size, opt.latent_dim))))
         z2 = Variable(FloatTensor(np.random.normal(0, 1, (batch_size, opt.latent_dim))))
 
-        filter_imgs = filter(imgs, z, secret)
+        filter_imgs = filter(imgs, z, secret.long())
 
         if opt.use_real_fake:
             gen_secret_0 = Variable(LongTensor(np.random.choice([0.0], batch_size)))
@@ -189,7 +190,6 @@ def visualize():
             filter_imgs_1 = generator(filter_imgs, z2, gen_secret_1)
         save_dir = os.path.join(artifacts_path, 'visualize')
         utils.save_images_2(imgs, filter_imgs, filter_imgs_0, filter_imgs_1, save_dir, i_batch)
-        return
 
     return
 
@@ -228,7 +228,8 @@ def validate():
             return acc
 
         running_secret_acc  += accuracy(secret_pred_fix, secret)
-        running_secret_gen_acc  += accuracy(secret_pred_fix, gen_secret)
+        if opt.use_real_fake:
+            running_secret_gen_acc  += accuracy(secret_pred_fix, gen_secret)
         running_utility_acc += accuracy(utility_pred_fix, utility)
 
     secret_acc  = running_secret_acc / len(valid_dataloader)
