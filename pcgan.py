@@ -3,6 +3,8 @@ import argparse
 import os
 import numpy as np
 import math
+import scipy
+import json
 
 import torchvision.transforms as transforms
 from torchvision.utils import save_image
@@ -23,6 +25,7 @@ from models.filter import Filter, ConvFilter
 from models.unet import UNetFilter
 from models.discriminator import Discriminator, ConditionalDiscriminator, ConvDiscriminator
 from models.discriminator import SecretDiscriminator
+from models.inception import InceptionV3
 
 import datasets.celeba as celeba
 
@@ -36,6 +39,7 @@ def str2bool(v):
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
+device = "cuda:{}".format(torch.cuda.current_device())
 
 os.makedirs("images", exist_ok=True)
 
@@ -49,7 +53,7 @@ parser.add_argument("--n_cpu", type=int, default=8, help="number of cpu threads 
 parser.add_argument("--eps", type=float, default=0.5, help="distortion budget")
 parser.add_argument("--lambd", type=float, default=1000.0, help="squared penalty")
 parser.add_argument("--latent_dim", type=int, default=100, help="dimensionality of the latent space")
-parser.add_argument("--encoder_dim", type=int, default=128, help="dimensionality of the representation space")
+#parser.add_argument("--encoder_dim", type=int, default=128, help="dimensionality of the representation space")
 parser.add_argument("--embedding_dim", type=int, default=32, help="dimensionality of embedding space")
 parser.add_argument("--n_classes", type=int, default=2, help="number of classes for dataset")
 parser.add_argument("--img_size", type=int, default=32, help="size of each image dimension")
@@ -66,13 +70,17 @@ img_shape = (opt.channels, opt.img_size, opt.img_size)
 cuda = True if torch.cuda.is_available() else False
 
 # summary writer
-artifacts_path = 'artifacts/{}_eps_{}_lambd_{}_embedding_dim_{}/'.format(opt.name, opt.eps, opt.lambd, opt.embedding_dim)
+artifacts_path = 'artifacts/{}_eps_{}_lambd_{}_embedding_dim_{}_lr_{}_rf_{}/'.format(opt.name, opt.eps, opt.lambd, opt.embedding_dim, opt.lr, opt.use_real_fake)
 os.makedirs(artifacts_path, exist_ok=True)
 writer = SummaryWriter(artifacts_path)
 
 # fixed classifiers
-secret_classifier = utils.get_discriminator_model('resnet_small', num_classes=2, pretrained=False, device='cuda:0', weights_path='./artifacts/fixed_resnet_small/classifier_secret_{}x{}.h5'.format(opt.img_size, opt.img_size))
-utility_classifier = utils.get_discriminator_model('resnet_small', num_classes=2, pretrained=False, device='cuda:0', weights_path='./artifacts/fixed_resnet_small/classifier_utility_{}x{}.h5'.format(opt.img_size, opt.img_size))
+secret_classifier = utils.get_discriminator_model('resnet_small', num_classes=2, pretrained=False, device=device, weights_path='./artifacts/fixed_resnet_small/classifier_secret_{}x{}.h5'.format(opt.img_size, opt.img_size))
+utility_classifier = utils.get_discriminator_model('resnet_small', num_classes=2, pretrained=False, device=device, weights_path='./artifacts/fixed_resnet_small/classifier_utility_{}x{}.h5'.format(opt.img_size, opt.img_size))
+
+# inception model
+block_idx = InceptionV3.BLOCK_INDEX_BY_DIM[2048]
+inception_v3 = InceptionV3([block_idx])
 
 # Loss functions
 adversarial_loss = torch.nn.CrossEntropyLoss() #BCELoss()
@@ -84,7 +92,7 @@ distortion_loss = torch.nn.MSELoss()
 #discriminator = SecretDiscriminator(opt)
 
 filter = UNetFilter(3, 3, image_width=opt.img_size, image_height=opt.img_size, noise_dim=opt.latent_dim, activation='sigmoid', nb_classes=opt.n_classes, embedding_dim=opt.embedding_dim)
-discriminator = utils.get_discriminator_model('resnet18', num_classes=2, pretrained=True, device='cuda:0')
+discriminator = utils.get_discriminator_model('resnet18', num_classes=2, pretrained=True, device=device)
 
 #generator = Filter(opt)
 #discriminator_rf = ConditionalDiscriminator(opt, out_dim=3, activation=None)
@@ -95,7 +103,7 @@ discriminator = utils.get_discriminator_model('resnet18', num_classes=2, pretrai
 #discriminator_rf = Discriminator(opt, out_dim=3, activation=None)
 
 generator = UNetFilter(3, 3, image_width=opt.img_size, image_height=opt.img_size, noise_dim=opt.latent_dim, activation='sigmoid', nb_classes=opt.n_classes, embedding_dim=opt.embedding_dim)
-discriminator_rf = utils.get_discriminator_model('resnet18', num_classes=3, pretrained=True, device='cuda:0')
+discriminator_rf = utils.get_discriminator_model('resnet18', num_classes=3, pretrained=True, device=device)
 
 print("Generator parameters: ", utils.count_parameters(generator))
 print("Filter parameters: ", utils.count_parameters(filter))
@@ -105,6 +113,7 @@ print("Discriminator secret parameters: ", utils.count_parameters(discriminator)
 print("Discriminator real/fake parameters: ", utils.count_parameters(discriminator_rf))
 
 if cuda:
+    inception_v3.cuda()
     filter.cuda()
     discriminator.cuda()
     generator.cuda()
@@ -156,14 +165,74 @@ else:
 # Optimizers
 optimizer_f = torch.optim.Adam(filter.parameters(), lr=opt.lr, betas=(opt.b1, opt.b2))
 optimizer_d = torch.optim.Adam(discriminator.parameters(), lr=opt.lr, betas=(opt.b1, opt.b2))
+#optimizer_g = torch.optim.Adam(list(generator.parameters()) + list(filter.parameters()), lr=opt.lr, betas=(opt.b1, opt.b2))
 optimizer_g = torch.optim.Adam(generator.parameters(), lr=opt.lr, betas=(opt.b1, opt.b2))
 optimizer_d_rf = torch.optim.Adam(discriminator_rf.parameters(), lr=opt.lr, betas=(opt.b1, opt.b2))
 
 FloatTensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
 LongTensor = torch.cuda.LongTensor if cuda else torch.LongTensor
 
-#def evaluate():
-#    for i_batch, batch in tqdm.tqdm(enumerate(test_dataloader, 0)):
+def train_adversary():
+    def accuracy(pred, true):
+        u   = true.cpu().numpy().flatten()
+        p   = np.argmax(pred.cpu().detach().numpy(), axis=1)
+        acc = np.sum(u == p)/len(u)
+
+        return acc
+
+    for i_epoch in range(5):
+        for i_batch, batch in tqdm.tqdm(enumerate(train_dataloader, 0)):
+            imgs    = batch['image'].cuda()
+            utility = batch['utility'].float().cuda()
+            secret  = batch['secret'].float().cuda()
+            secret  = secret.view(secret.size(0))
+            utility = utility.view(utility.size(0))
+
+            batch_size = imgs.shape[0]
+
+            z1 = Variable(FloatTensor(np.random.normal(0, 1, (batch_size, opt.latent_dim))))
+            filter_imgs = filter(imgs, z1, secret.long())
+
+            if opt.use_real_fake:
+                z2 = Variable(FloatTensor(np.random.normal(0, 1, (batch_size, opt.latent_dim))))
+                gen_secret = Variable(LongTensor(np.random.choice([0.0, 1.0], batch_size)))
+                filter_imgs = generator(filter_imgs, z2, gen_secret)
+
+            # train
+            optimizer_d.zero_grad()
+            secret_pred = discriminator(filter_imgs.detach())
+            loss = adversarial_loss(secret_pred, secret.long())
+            loss.backward()
+            optimizer_d.step()
+
+            #if i_batch % 50 == 0:
+            #    acc = accuracy(secret_pred, secret)
+            #    print("secret_adv_acc: ", acc)
+
+    utils.save_model(discriminator, os.path.join(artifacts_path, "adv_discriminator.hdf5"))
+
+    accs = []
+    for i_batch, batch in tqdm.tqdm(enumerate(valid_dataloader, 0)):
+        imgs    = batch['image'].cuda()
+        secret  = batch['secret'].float().cuda()
+        secret  = secret.view(secret.size(0))
+
+        batch_size = imgs.shape[0]
+
+        z1 = Variable(FloatTensor(np.random.normal(0, 1, (batch_size, opt.latent_dim))))
+        filter_imgs = filter(imgs, z1, secret.long())
+
+        if opt.use_real_fake:
+            z2 = Variable(FloatTensor(np.random.normal(0, 1, (batch_size, opt.latent_dim))))
+            gen_secret = Variable(LongTensor(np.random.choice([0.0, 1.0], batch_size)))
+            filter_imgs = generator(filter_imgs, z2, gen_secret)
+
+        secret_pred = discriminator(filter_imgs.detach())
+        acc = accuracy(secret_pred, secret)
+        accs.append(acc)
+    acc = np.mean(accs)
+    print("test_secret_adv_acc: ", acc)
+    return acc
 
 
 def visualize():
@@ -193,11 +262,52 @@ def visualize():
 
     return
 
+def compute_activation_statistics(act):
+    mu = np.mean(act, axis=0)
+    sigma = np.cov(act, rowvar=False)
+    return mu, sigma
+
+def compute_frechet_inception_distance(acts1, acts2):
+    mu1, sigma1 = compute_activation_statistics(acts1)
+    mu2, sigma2 = compute_activation_statistics(acts2)
+
+    mu1 = np.atleast_1d(mu1)
+    mu2 = np.atleast_1d(mu2)
+
+    sigma1 = np.atleast_2d(sigma1)
+    sigma2 = np.atleast_2d(sigma2)
+
+    diff = mu1 - mu2
+
+    # Product might be almost singular
+    covmean, _ = scipy.linalg.sqrtm(sigma1.dot(sigma2), disp=False)
+    if not np.isfinite(covmean).all():
+        msg = ('fid calculation produces singular product; '
+               'adding %s to diagonal of cov estimates') % eps
+        print(msg)
+        offset = np.eye(sigma1.shape[0]) * eps
+        covmean = scipy.linalg.sqrtm((sigma1 + offset).dot(sigma2 + offset))
+
+    # Numerical error might give slight imaginary component
+    if np.iscomplexobj(covmean):
+        if not np.allclose(np.diagonal(covmean).imag, 0, atol=1e-3):
+            m = np.max(np.abs(covmean.imag))
+            raise ValueError('Imaginary component {}'.format(m))
+        covmean = covmean.real
+
+    tr_covmean = np.trace(covmean)
+
+    return (diff.dot(diff) + np.trace(sigma1) +
+            np.trace(sigma2) - 2 * tr_covmean)
 
 def validate():
     running_secret_acc = 0.0
+    running_secret_adv_acc = 0.0
     running_secret_gen_acc = 0.0
     running_utility_acc = 0.0
+
+    acts1 = []
+    acts2 = []
 
     for i_batch, batch in tqdm.tqdm(enumerate(valid_dataloader, 0)):
         imgs  = batch['image'].cuda()
@@ -217,6 +327,7 @@ def validate():
             gen_secret = Variable(LongTensor(np.random.choice([0.0, 1.0], batch_size)))
             filter_imgs = generator(filter_imgs, z, gen_secret)
 
+        secret_adv_pred  = discriminator(filter_imgs)
         secret_pred_fix  = secret_classifier(filter_imgs)
         utility_pred_fix = utility_classifier(filter_imgs)
 
@@ -228,15 +339,28 @@ def validate():
             return acc
 
         running_secret_acc  += accuracy(secret_pred_fix, secret)
+        running_secret_adv_acc  += accuracy(secret_adv_pred, secret)
         if opt.use_real_fake:
             running_secret_gen_acc  += accuracy(secret_pred_fix, gen_secret)
         running_utility_acc += accuracy(utility_pred_fix, utility)
 
+        inception_v3.eval()
+        a1 = inception_v3(imgs)[0]
+        a2 = inception_v3(filter_imgs)[0]
+        acts1.append(np.squeeze(a1.detach().cpu().numpy()))
+        acts2.append(np.squeeze(a2.detach().cpu().numpy()))
+
+    acts1 = np.concatenate(acts1, axis=0)
+    acts2 = np.concatenate(acts2, axis=0)
+
+    fid = compute_frechet_inception_distance(acts1, acts2)
+
     secret_acc  = running_secret_acc / len(valid_dataloader)
+    secret_adv_acc  = running_secret_adv_acc / len(valid_dataloader)
     utility_acc = running_utility_acc / len(valid_dataloader)
     gen_secret_acc = running_secret_gen_acc / len(valid_dataloader)
 
-    return secret_acc, utility_acc, gen_secret_acc, imgs, filter_imgs
+    return secret_acc, secret_adv_acc, utility_acc, gen_secret_acc, fid, imgs, filter_imgs
 
 def train(i_epoch):
     for i_batch, batch in tqdm.tqdm(enumerate(train_dataloader)):
@@ -253,6 +377,9 @@ def train(i_epoch):
         # -----------------
         #  Train Filter
         # -----------------
+        #if opt.use_real_fake:
+        #    optimizer_g.zero_grad()
+        #else:
         optimizer_f.zero_grad()
 
         # sample noise as filter input
@@ -271,6 +398,7 @@ def train(i_epoch):
 
         f_loss = f_adversary_loss + opt.lambd * torch.pow(torch.relu(f_distortion_loss-opt.eps), 2)
 
+        #if not opt.use_real_fake:
         f_loss.backward()
         optimizer_f.step()
 
@@ -303,6 +431,8 @@ def train(i_epoch):
 
             g_loss = g_adversary_loss + opt.lambd * torch.pow(torch.relu(g_distortion_loss-opt.eps), 2)
 
+            #total_loss = f_loss + g_loss
+            #total_loss.backward()
             g_loss.backward()
             optimizer_g.step()
 
@@ -415,15 +545,19 @@ def train_2(i_epoch):
 if opt.mode == 'train':
     for i_epoch in range(opt.n_epochs):
         # validate models
-        secret_acc, utility_acc, gen_secret_acc, imgs, filter_imgs = validate()
+        secret_acc, secret_adv_acc, utility_acc, gen_secret_acc, fid, imgs, filter_imgs = validate()
         print("secret_acc: ", secret_acc)
-        print("gen secret acc: ", gen_secret_acc)
+        print("secret_adv_acc: ", secret_adv_acc)
+        print("gen_secret_acc: ", gen_secret_acc)
         print("utility_acc: ", utility_acc)
+        print("fid: ", fid)
 
         # log results
         writer.add_scalar('valid/secret_acc', secret_acc, i_epoch)
+        writer.add_scalar('valid/secret_adv_acc', secret_adv_acc, i_epoch)
         writer.add_scalar('valid/utility_acc', utility_acc, i_epoch)
         writer.add_scalar('valid/gen_secret_acc', gen_secret_acc, i_epoch)
+        writer.add_scalar('valid/fid', fid, i_epoch)
         utils.save_images(imgs, filter_imgs, artifacts_path, i_epoch)
 
         # train models
@@ -439,9 +573,23 @@ elif opt.mode == 'evaluate':
     generator.load_state_dict(torch.load(os.path.join(artifacts_path, 'generator.hdf5')))
     filter.load_state_dict(torch.load(os.path.join(artifacts_path, 'filter.hdf5')))
 
-    secret_acc, utility_acc, imgs, filter_imgs = validate()
+    secret_acc, _, utility_acc, gen_secret_acc, fid, imgs, filter_imgs = validate()
     print("secret_acc: ", secret_acc)
     print("utility_acc: ", utility_acc)
+    print("gen_secret_acc: ", gen_secret_acc)
+    print("fid: ", fid)
+    adv_acc = train_adversary()
+    print("secret_adv_acc: ", adv_acc)
+    results = {
+        'fix_secret_acc' : secret_acc,
+        'fix_utility_acc' : utility_acc,
+        'secret_adv_acc' : adv_acc,
+        'gen_secret_acc' : gen_secret_acc,
+        'fid' : fid,
+    }
+    with open(os.path.join(artifacts_path, "results.json"), "w") as f:
+        json.dump(results, f, indent=2)
+
 elif opt.mode == 'visualize':
     generator.load_state_dict(torch.load(os.path.join(artifacts_path, 'generator.hdf5')))
     filter.load_state_dict(torch.load(os.path.join(artifacts_path, 'filter.hdf5')))
