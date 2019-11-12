@@ -40,7 +40,7 @@ class ConvDecoder(nn.Module):
         return x
 
 class Decoder(nn.Module):
-    def __init__(self, opt):
+    def __init__(self, input_shape, encoder_dim, embedding_dim, latent_dim):
         super(Decoder, self).__init__()
 
         def block(in_feat, out_feat, normalize=True):
@@ -50,9 +50,9 @@ class Decoder(nn.Module):
             layers.append(nn.LeakyReLU(0.2, inplace=True))
             return layers
 
-        img_shape = (opt.channels, opt.img_size, opt.img_size)
+        img_shape = input_shape
         self.model = nn.Sequential(
-            *block(opt.latent_dim + opt.encoder_dim + opt.embedding_dim, 128, normalize=False),
+            *block(latent_dim + encoder_dim + embedding_dim, 128, normalize=False),
             *block(128, 256),
             *block(256, 512),
             *block(512, 1024),

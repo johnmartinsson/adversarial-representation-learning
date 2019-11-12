@@ -28,13 +28,13 @@ class ConvFilter(nn.Module):
         return img
 
 class Filter(nn.Module):
-    def __init__(self, opt):
+    def __init__(self, input_shape, nb_classes, encoder_dim, embedding_dim, latent_dim):
         super(Filter, self).__init__()
 
-        self.label_emb = nn.Embedding(opt.n_classes, opt.embedding_dim)
-        self.encoder = Encoder(opt)
-        self.decoder = Decoder(opt)
-        self.img_shape = (opt.channels, opt.img_size, opt.img_size)
+        self.label_emb = nn.Embedding(nb_classes, embedding_dim)
+        self.encoder = Encoder(input_shape, encoder_dim)
+        self.decoder = Decoder(input_shape, encoder_dim, embedding_dim, latent_dim)
+        self.img_shape = input_shape
 
     def forward(self, img, noise, label):
         # Concatenate label embedding and image to produce input

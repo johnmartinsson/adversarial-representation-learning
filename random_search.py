@@ -125,7 +125,67 @@ def build_args_no_bottleneck_mwae(gpu, experiment_id):
 
     return args, experiment_name
 
+def build_args_real_fake_mae(gpu, experiment_id):
+    alpha = np.random.choice([0.1, 0.5, 1.0]) #, 1.0, 5.0, 10.0, 20.0])
+    beta  = np.random.choice([0.1, 0.5, 1.0]) #, 1.0, 5.0, 10.0, 20.0])
+    gamma = np.random.choice([0.1, 0.5, 1.0]) #, 0.1, 0.5, 1.0, 5.0, 10.0, 20.0])
+    noise_dim = np.random.choice([5, 10])
+    nb_discriminator_steps = 10 # np.random.choice([1, 5, 10])
+    ds_lr = 1e-2 #np.random.choice([1e-2, 1e-3, 1e-4])
+    drf_lr = 1e-3 #np.random.choice([1e-2, 1e-3, 1e-4])
+    g_lr  = 1e-3 #np.random.choice([1e-2, 1e-3, 1e-4])
+    use_wse = np.random.choice(['True', 'False'])
 
+    experiment_name = 'random_search_real_fake/{}'.format(experiment_id)
+    args = [
+        'adversarial_bottleneck_experiment.py',
+        '--alpha', str(alpha),
+        '--beta', str(beta),
+        '--gamma', str(gamma),
+        '--ds_lr', str(ds_lr),
+        '--drf_lr', str(drf_lr),
+        '--g_lr', str(g_lr),
+        '--device', gpu,
+        '--experiment_name', experiment_name,
+        '--noise_dim', str(noise_dim),
+        '--max_epochs', str(200),
+        '--nb_discriminator_steps', str(nb_discriminator_steps),
+        '--use_weighted_squared_error', use_wse,
+        '--use_real_fake_discriminator', 'True',
+    ]
+
+    return args, experiment_name
+
+def build_args_real_fake_mae_beta(gpu, experiment_id):
+    alpha = 0.1 #np.random.choice([0.1, 0.5, 1.0]) #, 1.0, 5.0, 10.0, 20.0])
+    beta  = np.random.uniform(0, 20)
+    gamma = 0.1 #np.random.choice([0.1, 0.5, 1.0]) #, 0.1, 0.5, 1.0, 5.0, 10.0, 20.0])
+    noise_dim = np.random.choice([5, 10])
+    nb_discriminator_steps = 10 # np.random.choice([1, 5, 10])
+    ds_lr = 1e-2 #np.random.choice([1e-2, 1e-3, 1e-4])
+    drf_lr = 1e-3 #np.random.choice([1e-2, 1e-3, 1e-4])
+    g_lr  = 1e-3 #np.random.choice([1e-2, 1e-3, 1e-4])
+    use_wse = np.random.choice(['True', 'False'])
+
+    experiment_name = 'random_search_real_fake_mae_beta/{}'.format(experiment_id)
+    args = [
+        'adversarial_bottleneck_experiment.py',
+        '--alpha', str(alpha),
+        '--beta', str(beta),
+        '--gamma', str(gamma),
+        '--ds_lr', str(ds_lr),
+        '--drf_lr', str(drf_lr),
+        '--g_lr', str(g_lr),
+        '--device', gpu,
+        '--experiment_name', experiment_name,
+        '--noise_dim', str(noise_dim),
+        '--max_epochs', str(50),
+        '--nb_discriminator_steps', str(nb_discriminator_steps),
+        '--use_weighted_squared_error', use_wse,
+        '--use_real_fake_discriminator', 'True',
+    ]
+
+    return args, experiment_name
 
 
 def get_sampling_method(name):
@@ -141,6 +201,10 @@ def get_sampling_method(name):
         return build_args_no_bottleneck
     elif name == 'build_args_no_bottleneck_mwae':
         return build_args_no_bottleneck_mwae
+    elif name == 'build_args_real_fake_mae':
+        return build_args_real_fake_mae
+    elif name == 'build_args_real_fake_mae_beta':
+        return build_args_real_fake_mae_beta
     else:
         raise ValueError("sampling method not supported ...")
     return sampling_method

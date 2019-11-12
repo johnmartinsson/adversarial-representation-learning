@@ -42,7 +42,7 @@ class ConvEncoder(nn.Module):
         return self.model(img_emb)
 
 class Encoder(nn.Module):
-    def __init__(self, opt):
+    def __init__(self, input_shape, encoder_dim):
         super(Encoder, self).__init__()
 
         def block(in_feat, out_feat, dropout_rate):
@@ -52,7 +52,7 @@ class Encoder(nn.Module):
                 nn.LeakyReLU(0.2, inplace=True)
             ]
 
-        img_shape = (opt.channels, opt.img_size, opt.img_size)
+        img_shape = input_shape
 
         self.model = nn.Sequential(
             nn.Linear(int(np.prod(img_shape)), 512),
@@ -60,7 +60,7 @@ class Encoder(nn.Module):
             *block(512, 512, 0.1),
             *block(512, 512, 0.1),
             *block(512, 256, 0.1),
-            *block(256, opt.encoder_dim, 0.1),
+            *block(256, encoder_dim, 0.1),
         )
 
     def forward(self, img): #, labels):

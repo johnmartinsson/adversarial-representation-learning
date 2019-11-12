@@ -51,15 +51,15 @@ class ConvDiscriminator(nn.Module):
         return x
 
 class Discriminator(nn.Module):
-    def __init__(self, opt, out_dim=1, activation='sigmoid'):
+    def __init__(self, input_shape, nb_classes, embedding_dim, out_dim=1, activation='sigmoid'):
         super(Discriminator, self).__init__()
         self.activation = activation
 
-        img_shape = (opt.channels, opt.img_size, opt.img_size)
-        self.label_embedding = nn.Embedding(opt.n_classes, opt.embedding_dim)
+        img_shape = input_shape
+        self.label_embedding = nn.Embedding(nb_classes, embedding_dim)
 
         self.predict = nn.Sequential(
-            nn.Linear(opt.embedding_dim + int(np.prod(img_shape)), 512),
+            nn.Linear(embedding_dim + int(np.prod(img_shape)), 512),
             nn.LeakyReLU(0.2, inplace=True),
             nn.Linear(512, 512),
             nn.Dropout(0.4),
@@ -79,11 +79,11 @@ class Discriminator(nn.Module):
         return x
 
 class SecretDiscriminator(nn.Module):
-    def __init__(self, opt, out_dim=1, activation='sigmoid'):
+    def __init__(self, input_shape, out_dim=1, activation='sigmoid'):
         super(SecretDiscriminator, self).__init__()
         self.activation = activation
 
-        img_shape = (opt.channels, opt.img_size, opt.img_size)
+        img_shape = input_shape # (opt.channels, opt.img_size, opt.img_size)
 
         self.predict = nn.Sequential(
             nn.Linear(int(np.prod(img_shape)), 512),
