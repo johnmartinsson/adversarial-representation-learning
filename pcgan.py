@@ -61,6 +61,7 @@ parser.add_argument("--channels", type=int, default=3, help="number of image cha
 parser.add_argument("--log_interval", type=int, default=500, help="interval between image sampling")
 parser.add_argument("--name", type=str, default='default', help="experiment name")
 parser.add_argument("--use_real_fake", type=str2bool, nargs='?', const=True, default=False)
+parser.add_argument("--use_cond", type=str2bool, nargs='?', const=True, default=True)
 parser.add_argument("--mode", type=str, default='train')
 opt = parser.parse_args()
 print(opt)
@@ -78,6 +79,8 @@ writer = SummaryWriter(artifacts_path)
 secret_classifier = utils.get_discriminator_model('resnet_small', num_classes=2, pretrained=False, device=device, weights_path='./artifacts/fixed_resnet_small/classifier_secret_{}x{}.h5'.format(opt.img_size, opt.img_size))
 utility_classifier = utils.get_discriminator_model('resnet_small', num_classes=2, pretrained=False, device=device, weights_path='./artifacts/fixed_resnet_small/classifier_utility_{}x{}.h5'.format(opt.img_size, opt.img_size))
 
+adv_secret_classifier = utils.get_discriminator_model('resnet_small', num_classes=2, pretrained=False, device=device)
+tmp_secret_classifier = utils.get_discriminator_model('resnet_small', num_classes=2, pretrained=False, device=device)
 # inception model
 block_idx = InceptionV3.BLOCK_INDEX_BY_DIM[2048]
 inception_v3 = InceptionV3([block_idx])
@@ -91,7 +94,7 @@ distortion_loss = torch.nn.MSELoss()
 #filter = Filter(opt)
 #discriminator = SecretDiscriminator(opt)
 
-filter = UNetFilter(3, 3, image_width=opt.img_size, image_height=opt.img_size, noise_dim=opt.latent_dim, activation='sigmoid', nb_classes=opt.n_classes, embedding_dim=opt.embedding_dim)
+filter = UNetFilter(3, 3, image_width=opt.img_size, image_height=opt.img_size, noise_dim=opt.latent_dim, activation='sigmoid', nb_classes=opt.n_classes, embedding_dim=opt.embedding_dim, use_cond=opt.use_cond)
 discriminator = utils.get_discriminator_model('resnet18', num_classes=2, pretrained=True, device=device)
 
 #generator = Filter(opt)
@@ -120,6 +123,7 @@ if cuda:
     discriminator_rf.cuda()
     adversarial_loss.cuda()
     distortion_loss.cuda()
+    adv_secret_classifier.cuda()
 
 train_dataloader = torch.utils.data.DataLoader(
     celeba.CelebADataset(
@@ -165,6 +169,8 @@ else:
 # Optimizers
 optimizer_f = torch.optim.Adam(filter.parameters(), lr=opt.lr, betas=(opt.b1, opt.b2))
 optimizer_d = torch.optim.Adam(discriminator.parameters(), lr=opt.lr, betas=(opt.b1, opt.b2))
+optimizer_adv = torch.optim.Adam(adv_secret_classifier.parameters(), lr=opt.lr, betas=(opt.b1, opt.b2))
+optimizer_tmp = torch.optim.Adam(tmp_secret_classifier.parameters(), lr=opt.lr, betas=(opt.b1, opt.b2))
 #optimizer_g = torch.optim.Adam(list(generator.parameters()) + list(filter.parameters()), lr=opt.lr, betas=(opt.b1, opt.b2))
 optimizer_g = torch.optim.Adam(generator.parameters(), lr=opt.lr, betas=(opt.b1, opt.b2))
 optimizer_d_rf = torch.optim.Adam(discriminator_rf.parameters(), lr=opt.lr, betas=(opt.b1, opt.b2))
@@ -198,20 +204,32 @@ def train_adversary():
                 gen_secret = Variable(LongTensor(np.random.choice([0.0, 1.0], batch_size)))
                 filter_imgs = generator(filter_imgs, z2, gen_secret)
 
-            # train
-            optimizer_d.zero_grad()
-            secret_pred = discriminator(filter_imgs.detach())
+            # train tmp
+            optimizer_tmp.zero_grad()
+            secret_pred = tmp_secret_classifier(imgs)
             loss = adversarial_loss(secret_pred, secret.long())
             loss.backward()
-            optimizer_d.step()
+            optimizer_tmp.step()
 
-            #if i_batch % 50 == 0:
-            #    acc = accuracy(secret_pred, secret)
-            #    print("secret_adv_acc: ", acc)
+            if i_batch % 50 == 0:
+                acc = accuracy(secret_pred, secret)
+                print("secret_tmp_acc: ", acc)
 
-    utils.save_model(discriminator, os.path.join(artifacts_path, "adv_discriminator.hdf5"))
+            # train adversary
+            optimizer_adv.zero_grad()
+            secret_pred = adv_secret_classifier(filter_imgs.detach())
+            loss = adversarial_loss(secret_pred, secret.long())
+            loss.backward()
+            optimizer_adv.step()
 
-    accs = []
+            if i_batch % 50 == 0:
+                acc = accuracy(secret_pred, secret)
+                print("secret_adv_acc: ", acc)
+
+    utils.save_model(adv_secret_classifier, os.path.join(artifacts_path, "adv_secret_classifier.hdf5"))
+
+    accs1 = []
+    accs2 = []
     for i_batch, batch in tqdm.tqdm(enumerate(valid_dataloader, 0)):
         imgs    = batch['image'].cuda()
         secret  = batch['secret'].float().cuda()
@@ -227,12 +245,18 @@ def train_adversary():
             gen_secret = Variable(LongTensor(np.random.choice([0.0, 1.0], batch_size)))
             filter_imgs = generator(filter_imgs, z2, gen_secret)
 
-        secret_pred = discriminator(filter_imgs.detach())
+        secret_pred = adv_secret_classifier(filter_imgs.detach())
         acc = accuracy(secret_pred, secret)
-        accs.append(acc)
-    acc = np.mean(accs)
-    print("test_secret_adv_acc: ", acc)
-    return acc
+        accs1.append(acc)
+
+        secret_pred = tmp_secret_classifier(imgs)
+        acc = accuracy(secret_pred, secret)
+        accs2.append(acc)
+    acc1 = np.mean(accs1)
+    acc2 = np.mean(accs2)
+    print("test_secret_adv_acc: ", acc1)
+    print("test_secret_tmp_acc: ", acc2)
+    return acc1
 
 
 def visualize():

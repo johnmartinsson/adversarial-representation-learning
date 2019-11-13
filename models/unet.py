@@ -13,9 +13,10 @@ def double_conv(channels_in, channels_out):
     )
 
 class UNetFilter(nn.Module):
-    def __init__(self, channels_in, channels_out, chs=[32, 64, 128, 256, 512], image_width=64, image_height=64, noise_dim=10, activation='sigmoid', nb_classes=2, embedding_dim=16):
+    def __init__(self, channels_in, channels_out, chs=[32, 64, 128, 256, 512], image_width=64, image_height=64, noise_dim=10, activation='sigmoid', nb_classes=2, embedding_dim=16, use_cond=True):
         super().__init__()
 
+        self.use_cond = use_cond
         self.width  = image_width
         self.height = image_height
         self.activation = activation
@@ -41,7 +42,10 @@ class UNetFilter(nn.Module):
 
         self.dconv_down5 = double_conv(chs[3], chs[4])
 
-        self.dconv_up5 = double_conv(chs[4]+chs[4]+1+chs[3], chs[3])
+        if self.use_cond:
+            self.dconv_up5 = double_conv(chs[4]+chs[4]+1+chs[3], chs[3])
+        else:
+            self.dconv_up5 = double_conv(chs[4]+chs[4]+chs[3], chs[3])
         self.dconv_up4 = double_conv(chs[3]+chs[2], chs[2])
         self.dconv_up3 = double_conv(chs[2]+chs[1], chs[1])
         self.dconv_up2 = double_conv(chs[1]+chs[0], chs[0])
@@ -67,7 +71,10 @@ class UNetFilter(nn.Module):
 
         conv5_down = self.dconv_down5(pool4)
 
-        conv5_down = torch.cat((conv5_down, noise, cond_emb), dim=1)
+        if self.use_cond:
+            conv5_down = torch.cat((conv5_down, noise, cond_emb), dim=1)
+        else:
+            conv5_down = torch.cat((conv5_down, noise), dim=1)
 
         conv5_up = F.interpolate(conv5_down, scale_factor=2, mode='nearest')
         conv5_up = torch.cat((conv4_down, conv5_up), dim=1)
