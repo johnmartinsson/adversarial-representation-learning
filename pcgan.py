@@ -499,69 +499,6 @@ def train(i_epoch):
                 writer.add_scalar('loss/d_rf_loss', d_rf_loss.item(), i_batch + i_epoch*len(train_dataloader))
                 writer.add_scalar('loss/g_loss', g_loss.item(), i_batch + i_epoch*len(train_dataloader))
 
-def train_2(i_epoch):
-    for i_batch, batch in tqdm.tqdm(enumerate(train_dataloader)):
-        imgs   = batch['image']
-        secret = batch['secret'].float()
-        secret = secret.view(secret.size(0))
-
-        if cuda:
-            imgs = imgs.cuda()
-            secret = secret.cuda()
-
-        batch_size = imgs.shape[0]
-
-        # ---------------------------
-        # Train Generator (Real/Fake)
-        # ---------------------------
-        if opt.use_real_fake:
-            optimizer_g.zero_grad()
-
-            # sample noise as generator input
-            z = Variable(FloatTensor(np.random.normal(0, 1, (batch_size, opt.latent_dim))))
-
-            # sample secret
-            gen_secret = Variable(LongTensor(np.random.choice([0.0, 1.0], batch_size)))
-
-            # generate a batch of images
-            gen_imgs = generator(imgs, z, gen_secret)
-
-            # loss measures generator's ability to fool the discriminator
-            pred_secret = discriminator_rf(gen_imgs) #, gen_secret)
-            g_adversary_loss = adversarial_rf_loss(pred_secret, gen_secret)
-            g_distortion_loss = distortion_loss(gen_imgs, imgs)
-
-            g_loss = g_adversary_loss + opt.lambd * torch.pow(torch.relu(g_distortion_loss-opt.eps), 2)
-            g_loss.backward()
-            optimizer_g.step()
-
-        # --------------------------------
-        #  Train Discriminator (Real/Fake)
-        # --------------------------------
-
-        if opt.use_real_fake:
-            optimizer_d_rf.zero_grad()
-
-            c_imgs = torch.cat((imgs, gen_imgs.detach()), axis=1)
-            real_pred_secret = discriminator_rf(imgs) #, secret.long())
-            fake_pred_secret = discriminator_rf(gen_imgs.detach()) #, gen_secret)
-
-            fake_secret = Variable(LongTensor(fake_pred_secret.size(0)).fill_(2.0), requires_grad=False)
-            d_rf_loss_real = adversarial_rf_loss(real_pred_secret, secret.long())
-            d_rf_loss_fake = adversarial_rf_loss(fake_pred_secret, fake_secret)
-
-            d_rf_loss = (d_rf_loss_real + d_rf_loss_fake) / 2
-
-            d_rf_loss.backward()
-            optimizer_d_rf.step()
-
-        if i_batch % opt.log_interval:
-            if opt.use_real_fake:
-                writer.add_scalar('loss/d_rf_loss', d_rf_loss.item(), i_batch + i_epoch*len(train_dataloader))
-                writer.add_scalar('loss/g_loss', g_loss.item(), i_batch + i_epoch*len(train_dataloader))
-
-
-
 # ----------
 #  Training
 # ----------
@@ -586,7 +523,6 @@ if opt.mode == 'train':
 
         # train models
         train(i_epoch)
-        #train_2(i_epoch)
 
         # save models
         utils.save_model(filter, os.path.join(artifacts_path, "filter.hdf5"))
