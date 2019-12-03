@@ -51,15 +51,14 @@ class ConvDiscriminator(nn.Module):
         return x
 
 class Discriminator(nn.Module):
-    def __init__(self, input_shape, nb_classes, embedding_dim, out_dim=1, activation='sigmoid'):
+    def __init__(self, input_shape, out_dim=1, activation='sigmoid'):
         super(Discriminator, self).__init__()
         self.activation = activation
 
         img_shape = input_shape
-        self.label_embedding = nn.Embedding(nb_classes, embedding_dim)
 
         self.predict = nn.Sequential(
-            nn.Linear(embedding_dim + int(np.prod(img_shape)), 512),
+            nn.Linear(int(np.prod(img_shape)), 512),
             nn.LeakyReLU(0.2, inplace=True),
             nn.Linear(512, 512),
             nn.Dropout(0.4),
@@ -70,9 +69,8 @@ class Discriminator(nn.Module):
             nn.Linear(512, out_dim),
         )
 
-    def forward(self, img, label):
-        label_emb = self.label_embedding(label)
-        d_in = torch.cat((label_emb, img.view(img.size(0), -1)), -1)
+    def forward(self, img):
+        d_in = img.view(img.size(0), -1)
         x = self.predict(d_in)
         if self.activation == 'sigmoid':
             x = nn.functional.sigmoid(x)
@@ -102,7 +100,10 @@ class SecretDiscriminator(nn.Module):
         x = self.predict(d_in)
         if self.activation == 'sigmoid':
             x = nn.functional.sigmoid(x)
-        return x
+        elif self.activation == 'softmax':
+            x = nn.functional.softmax(x)
+        else:
+            return x
 
 class ConditionalDiscriminator(nn.Module):
     def __init__(self, opt, out_dim=1, activation='sigmoid'):
