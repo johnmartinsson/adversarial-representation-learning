@@ -129,8 +129,8 @@ train_dataloader = torch.utils.data.DataLoader(
         split='train',
         in_memory=opt.in_memory,
         input_shape=(opt.img_size, opt.img_size),
-        utility_attr='Male',
-        secret_attr='Smiling',
+        utility_attr=opt.utility_attr,
+        secret_attr=opt.secret_attr,
         transform=transforms.Compose([
             celeba.ToTensor(),
     ])),
@@ -145,8 +145,8 @@ if opt.mode == 'evaluate':
             split='test',
             in_memory=opt.in_memory,
             input_shape=(opt.img_size, opt.img_size),
-            utility_attr='Male',
-            secret_attr='Smiling',
+            utility_attr=opt.utility_attr,
+            secret_attr=opt.secret_attr,
             transform=transforms.Compose([
                 celeba.ToTensor(),
         ])),
@@ -159,8 +159,8 @@ else:
             split='valid',
             in_memory=opt.in_memory,
             input_shape=(opt.img_size, opt.img_size),
-            utility_attr='Male',
-            secret_attr='Smiling',
+            utility_attr=opt.utility_attr,
+            secret_attr=opt.secret_attr,
             transform=transforms.Compose([
                 celeba.ToTensor(),
         ])),
