@@ -96,8 +96,8 @@ def main(hparams, writer):
 
         print('Epoch: %d utility acc : %.3f' % (epoch + 1, acc))
         print('Epoch: %d utility loss : %.3f' % (epoch + 1, loss))
-        writer.add_scalar('acc', acc)
-        writer.add_scalar('loss', loss)
+        writer.add_scalar('acc', acc, epoch)
+        writer.add_scalar('loss', loss, epoch)
 
         experiment_path = os.path.join('artifacts', hparams.experiment_name)
         # serialize the best models
