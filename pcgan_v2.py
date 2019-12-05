@@ -42,28 +42,33 @@ device = "cuda:{}".format(torch.cuda.current_device())
 os.makedirs("images", exist_ok=True)
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--n_epochs", type=int, default=200, help="number of epochs of training")
+parser.add_argument("--n_epochs", type=int, default=30, help="number of epochs of training")
 parser.add_argument("--n_balanced", type=int, default=50, help="number of epochs of training")
 parser.add_argument("--batch_size", type=int, default=64, help="size of the batches")
 parser.add_argument("--lr", type=float, default=0.0002, help="adam: learning rate")
 parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of first order momentum of gradient")
 parser.add_argument("--b2", type=float, default=0.999, help="adam: decay of first order momentum of gradient")
-parser.add_argument("--n_cpu", type=int, default=8, help="number of cpu threads to use during batch generation")
-parser.add_argument("--eps", type=float, default=0.5, help="distortion budget")
+parser.add_argument("--n_workers", type=int, default=8, help="number of cpu threads to use during batch generation")
+parser.add_argument("--eps", type=float, default=0.005, help="distortion budget")
 #parser.add_argument("--alpha", type=float, default=0.1, help="distortion budget")
 parser.add_argument("--beta", type=float, default=1.0, help="distortion budget")
-parser.add_argument("--lambd", type=float, default=100000.0, help="squared penalty")
-parser.add_argument("--latent_dim", type=int, default=100, help="dimensionality of the latent space")
+parser.add_argument("--lambd", type=float, default=10000.0, help="squared penalty")
+parser.add_argument("--latent_dim", type=int, default=256, help="dimensionality of the latent space")
 parser.add_argument("--embedding_dim", type=int, default=32, help="dimensionality of embedding space")
-parser.add_argument("--encoder_dim", type=int, default=32, help="dimensionality of encoding space")
+parser.add_argument("--encoder_dim", type=int, default=128, help="dimensionality of encoding space")
 parser.add_argument("--n_classes", type=int, default=2, help="number of classes for dataset")
-parser.add_argument("--img_size", type=int, default=32, help="size of each image dimension")
+parser.add_argument("--img_size", type=int, default=64, help="size of each image dimension")
 parser.add_argument("--channels", type=int, default=3, help="number of image channels")
 parser.add_argument("--log_interval", type=int, default=1000, help="interval between image sampling")
-parser.add_argument("--name", type=str, default='default', help="experiment name")
+#parser.add_argument("--name", type=str, default='default', help="experiment name")
+parser.add_argument("--artifacts_dir", type=str, default='default', help="directory to put artifacts in")
 parser.add_argument("--mode", type=str, default='train')
-parser.add_argument("--use_basic_networks", type=str2bool, nargs='?', const=True, default=False)
+parser.add_argument("--discriminator_name", type=str, default='fc_discriminator', help="name of discriminator")
+parser.add_argument("--generator_name", type=str, default='fc_generator', help="name of generator")
+#parser.add_argument("--use_basic_networks", type=str2bool, nargs='?', const=True, default=False)
 parser.add_argument("--in_memory", type=str2bool, nargs='?', const=True, default=True)
+parser.add_argument("--utility_attr", type=str, default='Male')
+parser.add_argument("--secret_attr", type=str, default='Smiling')
 opt = parser.parse_args()
 print(opt)
 
@@ -72,7 +77,7 @@ img_shape = (opt.channels, opt.img_size, opt.img_size)
 cuda = True if torch.cuda.is_available() else False
 
 # summary writer
-artifacts_path = 'artifacts/{}_eps_{}_lambd_{}_embedding_dim_{}_lr_{}/'.format(opt.name, opt.eps, opt.lambd, opt.embedding_dim, opt.lr)
+artifacts_path = opt.artifacts_dir #'artifacts/{}_eps_{}_lambd_{}_embedding_dim_{}_lr_{}/'.format(opt.name, opt.eps, opt.lambd, opt.embedding_dim, opt.lr)
 os.makedirs(artifacts_path, exist_ok=True)
 writer = SummaryWriter(artifacts_path)
 
@@ -80,9 +85,9 @@ writer = SummaryWriter(artifacts_path)
 secret_classifier = utils.get_discriminator_model('resnet_small', num_classes=2, pretrained=False, device=device, weights_path='./artifacts/fixed_resnet_small/classifier_secret_{}x{}.h5'.format(opt.img_size, opt.img_size))
 utility_classifier = utils.get_discriminator_model('resnet_small', num_classes=2, pretrained=False, device=device, weights_path='./artifacts/fixed_resnet_small/classifier_utility_{}x{}.h5'.format(opt.img_size, opt.img_size))
 
-#adv_secret_classifier = utils.get_discriminator_model('resnet_small', num_classes=2, pretrained=False, device=device)
-# inception model
+adv_secret_classifier = utils.get_discriminator_model('resnet_small', num_classes=2, pretrained=False, device=device)
 
+# inception model
 #block_idx = InceptionV3.BLOCK_INDEX_BY_DIM[2048]
 #inception_v3 = InceptionV3([block_idx])
 
@@ -92,13 +97,21 @@ adversarial_rf_loss = torch.nn.CrossEntropyLoss()
 distortion_loss = torch.nn.MSELoss()
 
 # Initialize generator and discriminator
-if opt.use_basic_networks:
+if opt.generator_name == 'fc_generator':
     generator = Filter(input_shape=(3, opt.img_size, opt.img_size), nb_classes=2, encoder_dim=opt.encoder_dim, embedding_dim=opt.embedding_dim, latent_dim=opt.latent_dim)
-    discriminator = Discriminator(input_shape=(3, opt.img_size, opt.img_size), out_dim=3, activation=None)
-else:
+elif opt.generator_name == 'unet_generator':
     generator = UNetFilter(3, 3, image_width=opt.img_size, image_height=opt.img_size, noise_dim=opt.latent_dim, activation='sigmoid', nb_classes=opt.n_classes, embedding_dim=opt.embedding_dim)
-    #discriminator = utils.get_discriminator_model('resnet18', num_classes=3, pretrained=True, device=device)
+else:
+    raise ValueError("generator not defined: ", opt.generator_name)
+
+if opt.discriminator_name == 'fc_discriminator':
     discriminator = Discriminator(input_shape=(3, opt.img_size, opt.img_size), out_dim=3, activation=None)
+elif opt.discriminator_name == 'resnet18_discriminator':
+    discriminator = utils.get_discriminator_model('resnet18', num_classes=3, pretrained=False, device=device)
+elif opt.discriminator_name == 'resnet_small_discriminator':
+    discriminator = utils.get_discriminator_model('resnet_small', num_classes=3, pretrained=False, device=device)
+else:
+    raise ValueError("discriminator not defined: ", opt.discriminator_name)
 
 print("Generator parameters: ", utils.count_parameters(generator))
 print("Discriminator real/fake parameters: ", utils.count_parameters(discriminator))
@@ -109,7 +122,7 @@ if cuda:
     generator.cuda()
     adversarial_loss.cuda()
     distortion_loss.cuda()
-    #adv_secret_classifier.cuda()
+    adv_secret_classifier.cuda()
 
 train_dataloader = torch.utils.data.DataLoader(
     celeba.CelebADataset(
@@ -123,6 +136,7 @@ train_dataloader = torch.utils.data.DataLoader(
     ])),
     batch_size=opt.batch_size,
     shuffle=True,
+    num_workers=opt.n_workers
 )
 
 if opt.mode == 'evaluate':
@@ -137,6 +151,7 @@ if opt.mode == 'evaluate':
                 celeba.ToTensor(),
         ])),
         batch_size=opt.batch_size,
+        num_workers=opt.n_workers
     )
 else:
     valid_dataloader = torch.utils.data.DataLoader(
@@ -150,11 +165,12 @@ else:
                 celeba.ToTensor(),
         ])),
         batch_size=opt.batch_size,
+        num_workers=opt.n_workers
     )
 
 # Optimizers
 optimizer_d = torch.optim.Adam(discriminator.parameters(), lr=opt.lr, betas=(opt.b1, opt.b2))
-#optimizer_adv = torch.optim.Adam(adv_secret_classifier.parameters(), lr=opt.lr, betas=(opt.b1, opt.b2))
+optimizer_adv = torch.optim.Adam(adv_secret_classifier.parameters(), lr=opt.lr, betas=(opt.b1, opt.b2))
 optimizer_g = torch.optim.Adam(generator.parameters(), lr=opt.lr, betas=(opt.b1, opt.b2))
 
 FloatTensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
@@ -323,16 +339,18 @@ def validate():
         running_secret_gen_acc  += accuracy(secret_pred_fix, gen_secret)
         running_utility_acc += accuracy(utility_pred_fix, utility)
 
-        #inception_v3.eval()
-        #a1 = inception_v3(imgs)[0]
-        #a2 = inception_v3(filter_imgs)[0]
-        #acts1.append(np.squeeze(a1.detach().cpu().numpy()))
-        #acts2.append(np.squeeze(a2.detach().cpu().numpy()))
+        #if opt.mode == 'evaluate':
+        #    inception_v3.eval()
+        #    a1 = inception_v3(imgs)[0]
+        #    a2 = inception_v3(filter_imgs)[0]
+        #    acts1.append(np.squeeze(a1.detach().cpu().numpy()))
+        #    acts2.append(np.squeeze(a2.detach().cpu().numpy()))
 
-    #acts1 = np.concatenate(acts1, axis=0)
-    #acts2 = np.concatenate(acts2, axis=0)
-
-    #fid = compute_frechet_inception_distance(acts1, acts2)
+    #if opt.mode == 'evaluate':
+    #    acts1 = np.concatenate(acts1, axis=0)
+    #    acts2 = np.concatenate(acts2, axis=0)
+    #    fid = compute_frechet_inception_distance(acts1, acts2)
+    #else:
     fid = 0
 
     secret_acc  = running_secret_acc / len(valid_dataloader)
@@ -368,25 +386,28 @@ def train_without_filter(i_epoch):
         z2 = Variable(FloatTensor(np.random.normal(0, 1, (batch_size, opt.latent_dim))))
 
         # sample secret
-        ones = Variable(LongTensor(secret.shape).fill_(1.0), requires_grad=False)
-        secret_c = ones-secret
-        #gen_secret = Variable(LongTensor(np.random.choice([0.0, 1.0], batch_size)))
+        #ones = Variable(LongTensor(secret.shape).fill_(1.0), requires_grad=False)
+        #secret_c = ones-secret
+        gen_secret = Variable(LongTensor(np.random.choice([0.0, 1.0], batch_size)))
 
         # generate a batch of images
         #gen_imgs_1 = generator(imgs, z1, secret)
-        gen_imgs_2 = generator(imgs, z2, secret_c)
+        #gen_imgs_2 = generator(imgs, z2, secret_c)
+        gen_imgs_2 = generator(imgs, z2, gen_secret)
 
         # loss measures generator's ability to fool the discriminator
         #pred_secret_1       = discriminator(gen_imgs_1)
         pred_secret_2       = discriminator(gen_imgs_2)
         #g_adversary_loss_1  = adversarial_rf_loss(pred_secret_1, secret)
-        g_adversary_loss_2  = adversarial_rf_loss(pred_secret_2, secret_c)
+        #g_adversary_loss_2  = adversarial_rf_loss(pred_secret_2, secret_c)
+        g_adversary_loss_2  = adversarial_rf_loss(pred_secret_2, gen_secret)
         #g_distortion_loss_1 = distortion_loss(gen_imgs_1, imgs)
         g_distortion_loss_2 = distortion_loss(gen_imgs_2, imgs)
 
         g_adversary_loss  = g_adversary_loss_2
         g_distortion      = g_distortion_loss_2
-        g_distortion_loss = (i_epoch * opt.lambd) * torch.pow(torch.relu(g_distortion-opt.eps), 2)
+        lambd = (opt.lambd / opt.n_epochs) * i_epoch
+        g_distortion_loss = lambd * torch.pow(torch.relu(g_distortion-opt.eps), 2)
 
         #g_adversary_loss  = (1-opt.beta) * g_adversary_loss_1  + opt.beta * g_adversary_loss_2
         #g_distortion      = (1-opt.beta) * g_distortion_loss_1 + opt.beta * g_distortion_loss_2
