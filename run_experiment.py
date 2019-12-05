@@ -6,7 +6,7 @@ from collections import deque
 
 def train_classifiers(mode):
     secret_attributes = [
-        'Attractive'
+        'Attractive',
         'Young',
         'Male',
         'Wearing_Lipstick',
@@ -39,7 +39,7 @@ def train_classifiers(mode):
 
 def secret_attributes():
     secret_attributes = [
-        'Attractive'
+        'Attractive',
         'Young',
         'Male',
         'Wearing_Lipstick',
