@@ -46,23 +46,28 @@ os.makedirs("images", exist_ok=True)
 parser = argparse.ArgumentParser()
 parser.add_argument("--n_epochs", type=int, default=200, help="number of epochs of training")
 parser.add_argument("--batch_size", type=int, default=64, help="size of the batches")
-parser.add_argument("--lr", type=float, default=0.0002, help="adam: learning rate")
+parser.add_argument("--lr", type=float, default=0.0005, help="adam: learning rate")
 parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of first order momentum of gradient")
 parser.add_argument("--b2", type=float, default=0.999, help="adam: decay of first order momentum of gradient")
-parser.add_argument("--n_cpu", type=int, default=8, help="number of cpu threads to use during batch generation")
+parser.add_argument("--n_workers", type=int, default=8, help="number of cpu threads to use during batch generation")
 parser.add_argument("--eps", type=float, default=0.5, help="distortion budget")
-parser.add_argument("--lambd", type=float, default=1000.0, help="squared penalty")
-parser.add_argument("--latent_dim", type=int, default=100, help="dimensionality of the latent space")
+parser.add_argument("--lambd", type=float, default=100000.0, help="squared penalty")
+parser.add_argument("--latent_dim", type=int, default=1024, help="dimensionality of the latent space")
 #parser.add_argument("--encoder_dim", type=int, default=128, help="dimensionality of the representation space")
-parser.add_argument("--embedding_dim", type=int, default=32, help="dimensionality of embedding space")
+parser.add_argument("--embedding_dim", type=int, default=128, help="dimensionality of embedding space")
 parser.add_argument("--n_classes", type=int, default=2, help="number of classes for dataset")
-parser.add_argument("--img_size", type=int, default=32, help="size of each image dimension")
+parser.add_argument("--img_size", type=int, default=64, help="size of each image dimension")
 parser.add_argument("--channels", type=int, default=3, help="number of image channels")
 parser.add_argument("--log_interval", type=int, default=500, help="interval between image sampling")
+parser.add_argument("--discriminator_update_interval", type=int, default=1, help="how often to update discriminator")
 parser.add_argument("--name", type=str, default='default', help="experiment name")
 parser.add_argument("--use_real_fake", type=str2bool, nargs='?', const=True, default=False)
-parser.add_argument("--use_cond", type=str2bool, nargs='?', const=True, default=True)
+parser.add_argument("--use_cond", type=str2bool, nargs='?', const=True, default=False)
 parser.add_argument("--mode", type=str, default='train')
+parser.add_argument("--discriminator_name", type=str, default='resnet_small_discriminator', help="name of discriminator")
+parser.add_argument("--artifacts_dir", type=str, default='default', help="directory to put artifacts in")
+parser.add_argument("--utility_attr", type=str, default='Male')
+parser.add_argument("--secret_attr", type=str, default='Smiling')
 opt = parser.parse_args()
 print(opt)
 
@@ -71,13 +76,17 @@ img_shape = (opt.channels, opt.img_size, opt.img_size)
 cuda = True if torch.cuda.is_available() else False
 
 # summary writer
-artifacts_path = 'artifacts/{}_eps_{}_lambd_{}_embedding_dim_{}_lr_{}_rf_{}/'.format(opt.name, opt.eps, opt.lambd, opt.embedding_dim, opt.lr, opt.use_real_fake)
+#artifacts_path = 'artifacts/{}_eps_{}_lambd_{}_embedding_dim_{}_lr_{}_rf_{}/'.format(opt.name, opt.eps, opt.lambd, opt.embedding_dim, opt.lr, opt.use_real_fake)
+artifacts_path = opt.artifacts_dir
 os.makedirs(artifacts_path, exist_ok=True)
 writer = SummaryWriter(artifacts_path)
 
 # fixed classifiers
-secret_classifier = utils.get_discriminator_model('resnet_small', num_classes=2, pretrained=False, device=device, weights_path='./artifacts/fixed_resnet_small/classifier_secret_{}x{}.h5'.format(opt.img_size, opt.img_size))
-utility_classifier = utils.get_discriminator_model('resnet_small', num_classes=2, pretrained=False, device=device, weights_path='./artifacts/fixed_resnet_small/classifier_utility_{}x{}.h5'.format(opt.img_size, opt.img_size))
+#secret_classifier = utils.get_discriminator_model('resnet_small', num_classes=2, pretrained=False, device=device, weights_path='./artifacts/fixed_resnet_small/classifier_secret_{}x{}.h5'.format(opt.img_size, opt.img_size))
+#utility_classifier = utils.get_discriminator_model('resnet_small', num_classes=2, pretrained=False, device=device, weights_path='./artifacts/fixed_resnet_small/classifier_utility_{}x{}.h5'.format(opt.img_size, opt.img_size))
+
+secret_classifier = utils.get_discriminator_model('resnet18', num_classes=2, pretrained=False, device=device, weights_path='./artifacts/fixed_classifiers/{}/classifier_{}x{}.h5'.format(opt.secret_attr, opt.img_size, opt.img_size))
+utility_classifier = utils.get_discriminator_model('resnet18', num_classes=2, pretrained=False, device=device, weights_path='./artifacts/fixed_classifiers/{}/classifier_{}x{}.h5'.format(opt.utility_attr, opt.img_size, opt.img_size))
 
 adv_secret_classifier = utils.get_discriminator_model('resnet_small', num_classes=2, pretrained=False, device=device)
 tmp_secret_classifier = utils.get_discriminator_model('resnet_small', num_classes=2, pretrained=False, device=device)
@@ -91,22 +100,18 @@ adversarial_rf_loss = torch.nn.CrossEntropyLoss()
 distortion_loss = torch.nn.MSELoss()
 
 # Initialize generator and discriminator
-#filter = Filter(opt)
-#discriminator = SecretDiscriminator(opt)
 
 filter = UNetFilter(3, 3, image_width=opt.img_size, image_height=opt.img_size, noise_dim=opt.latent_dim, activation='sigmoid', nb_classes=opt.n_classes, embedding_dim=opt.embedding_dim, use_cond=opt.use_cond)
+generator = UNetFilter(3, 3, image_width=opt.img_size, image_height=opt.img_size, noise_dim=opt.latent_dim, activation='sigmoid', nb_classes=opt.n_classes, embedding_dim=opt.embedding_dim)
+
 discriminator = utils.get_discriminator_model('resnet18', num_classes=2, pretrained=True, device=device)
 
-#generator = Filter(opt)
-#discriminator_rf = ConditionalDiscriminator(opt, out_dim=3, activation=None)
-
-#generator = ConvFilter(opt)
-#discriminator_rf = ConvDiscriminator(opt, out_dim=3, activation=None)
-#generator = Filter(opt)
-#discriminator_rf = Discriminator(opt, out_dim=3, activation=None)
-
-generator = UNetFilter(3, 3, image_width=opt.img_size, image_height=opt.img_size, noise_dim=opt.latent_dim, activation='sigmoid', nb_classes=opt.n_classes, embedding_dim=opt.embedding_dim)
-discriminator_rf = utils.get_discriminator_model('resnet18', num_classes=3, pretrained=True, device=device)
+if opt.discriminator_name == 'resnet18_discriminator':
+    discriminator_rf = utils.get_discriminator_model('resnet18', num_classes=3, pretrained=True, device=device)
+elif opt.discriminator_name == 'resnet_small_discriminator':
+    discriminator_rf = utils.get_discriminator_model('resnet_small', num_classes=3, pretrained=False, device=device)
+else:
+    raise ValueError("discriminator not defined: ", opt.discriminator_name)
 
 print("Generator parameters: ", utils.count_parameters(generator))
 print("Filter parameters: ", utils.count_parameters(filter))
@@ -130,13 +135,14 @@ train_dataloader = torch.utils.data.DataLoader(
         split='train',
         in_memory=True,
         input_shape=(opt.img_size, opt.img_size),
-        utility_attr='Male',
-        secret_attr='Smiling',
+        utility_attr=opt.utility_attr, #'Male',
+        secret_attr=opt.secret_attr, #'Smiling',
         transform=transforms.Compose([
             celeba.ToTensor(),
     ])),
     batch_size=opt.batch_size,
     shuffle=True,
+    num_workers=opt.n_workers
 )
 
 if opt.mode == 'evaluate':
@@ -145,12 +151,13 @@ if opt.mode == 'evaluate':
             split='test',
             in_memory=True,
             input_shape=(opt.img_size, opt.img_size),
-            utility_attr='Male',
-            secret_attr='Smiling',
+            utility_attr=opt.utility_attr, #'Male',
+            secret_attr=opt.secret_attr, #'Smiling',
             transform=transforms.Compose([
                 celeba.ToTensor(),
         ])),
         batch_size=opt.batch_size,
+        num_workers=opt.n_workers
     )
 else:
     valid_dataloader = torch.utils.data.DataLoader(
@@ -158,12 +165,13 @@ else:
             split='valid',
             in_memory=True,
             input_shape=(opt.img_size, opt.img_size),
-            utility_attr='Male',
-            secret_attr='Smiling',
+            utility_attr=opt.utility_attr, #'Male',
+            secret_attr=opt.secret_attr, #'Smiling',
             transform=transforms.Compose([
                 celeba.ToTensor(),
         ])),
         batch_size=opt.batch_size,
+        num_workers=opt.n_workers
     )
 
 # Optimizers
@@ -386,6 +394,41 @@ def validate():
 
     return secret_acc, secret_adv_acc, utility_acc, gen_secret_acc, fid, imgs, filter_imgs
 
+def predict(attr):
+    preds       = np.zeros((len(valid_dataloader), 2))
+    gen_preds   = np.zeros((len(valid_dataloader), 2))
+    secrets     = np.zeros((len(valid_dataloader), 1))
+    gen_secrets = np.zeros((len(valid_dataloader)))
+
+    classifier = utils.get_discriminator_model('resnet18', num_classes=2, pretrained=False, device=device, weights_path='./artifacts/fixed_classifiers/{}/classifier_{}x{}.h5'.format(attr, opt.img_size, opt.img_size))
+    if cuda:
+        classifier.cuda()
+    # transform images
+    for i_batch, batch in tqdm.tqdm(enumerate(valid_dataloader, 0)):
+        imgs  = batch['image'].cuda()
+        secret  = batch['secret'].float()
+        #print(secret.shape)
+        #print(secrets.shape)
+
+        batch_size  = imgs.shape[0]
+        z           = Variable(FloatTensor(np.random.normal(0, 1, (batch_size, opt.latent_dim))))
+        gen_secret  = Variable(LongTensor(np.random.choice([0.0, 1.0], batch_size)))
+        gen_imgs    = generator(imgs, z, gen_secret)
+
+        pred        = classifier(imgs)
+        gen_pred    = classifier(gen_imgs)
+
+        preds       = np.concatenate((preds,       pred.detach().cpu().numpy()))
+        gen_preds   = np.concatenate((gen_preds,   gen_pred.detach().cpu().numpy()))
+        secrets     = np.concatenate((secrets,     secret.numpy()))
+        gen_secrets = np.concatenate((gen_secrets, gen_secret.detach().cpu().numpy()))
+
+    # save transformed images
+    file_name = "predict_{}_{}x{}.pkl".format(attr, opt.img_size, opt.img_size)
+    with open(os.path.join(opt.artifacts_dir, file_name), 'wb') as f:
+        pickle.dump((preds, gen_preds, secrets, gen_secrets), f, pickle.HIGHEST_PROTOCOL)
+
+
 def train(i_epoch):
     for i_batch, batch in tqdm.tqdm(enumerate(train_dataloader)):
         imgs   = batch['image']
@@ -476,27 +519,29 @@ def train(i_epoch):
         #  Train Discriminator (Real/Fake)
         # --------------------------------
 
-        if opt.use_real_fake:
-            optimizer_d_rf.zero_grad()
+        if i_batch % opt.discriminator_update_interval == 0:
+            if opt.use_real_fake:
+                optimizer_d_rf.zero_grad()
 
-            c_imgs = torch.cat((imgs, gen_imgs.detach()), axis=1)
-            real_pred_secret = discriminator_rf(imgs) #, secret.long())
-            fake_pred_secret = discriminator_rf(gen_imgs.detach()) #, gen_secret)
+                c_imgs = torch.cat((imgs, gen_imgs.detach()), axis=1)
+                real_pred_secret = discriminator_rf(imgs) #, secret.long())
+                fake_pred_secret = discriminator_rf(gen_imgs.detach()) #, gen_secret)
 
-            fake_secret = Variable(LongTensor(fake_pred_secret.size(0)).fill_(2.0), requires_grad=False)
-            d_rf_loss_real = adversarial_rf_loss(real_pred_secret, secret.long())
-            d_rf_loss_fake = adversarial_rf_loss(fake_pred_secret, fake_secret)
+                fake_secret = Variable(LongTensor(fake_pred_secret.size(0)).fill_(2.0), requires_grad=False)
+                d_rf_loss_real = adversarial_rf_loss(real_pred_secret, secret.long())
+                d_rf_loss_fake = adversarial_rf_loss(fake_pred_secret, fake_secret)
 
-            d_rf_loss = (d_rf_loss_real + d_rf_loss_fake) / 2
+                d_rf_loss = (d_rf_loss_real + d_rf_loss_fake) / 2
 
-            d_rf_loss.backward()
-            optimizer_d_rf.step()
+                d_rf_loss.backward()
+                optimizer_d_rf.step()
 
         if i_batch % opt.log_interval:
             writer.add_scalar('loss/d_loss', d_loss.item(), i_batch + i_epoch*len(train_dataloader))
             writer.add_scalar('loss/f_loss', f_loss.item(), i_batch + i_epoch*len(train_dataloader))
             if opt.use_real_fake:
-                writer.add_scalar('loss/d_rf_loss', d_rf_loss.item(), i_batch + i_epoch*len(train_dataloader))
+                if i_batch % opt.discriminator_update_interval == 0:
+                    writer.add_scalar('loss/d_rf_loss', d_rf_loss.item(), i_batch + i_epoch*len(train_dataloader))
                 writer.add_scalar('loss/g_loss', g_loss.item(), i_batch + i_epoch*len(train_dataloader))
 
 # ----------
@@ -549,7 +594,10 @@ elif opt.mode == 'evaluate':
     }
     with open(os.path.join(artifacts_path, "results.json"), "w") as f:
         json.dump(results, f, indent=2)
-
+elif opt.mode == 'predict':
+    generator.load_state_dict(torch.load(os.path.join(artifacts_path, 'generator.hdf5')))
+    for attr in ['Male', 'Wearing_Lipstick', 'Mouth_Slightly_Open', 'High_Cheekbones', 'Heavy_Makeup']:
+        predict(attr)
 elif opt.mode == 'visualize':
     generator.load_state_dict(torch.load(os.path.join(artifacts_path, 'generator.hdf5')))
     filter.load_state_dict(torch.load(os.path.join(artifacts_path, 'filter.hdf5')))

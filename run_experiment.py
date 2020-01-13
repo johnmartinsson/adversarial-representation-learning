@@ -69,6 +69,27 @@ def secret_attributes():
 
     return stack
 
+def uneven_discriminator_and_generator_training(mode):
+    discriminator_updates = [2, 4, 6, 8]
+    stack = deque()
+
+    for discriminator_update in discriminator_updates:
+        for i in range(2): # run each experiment twice
+            artifacts_dir = os.path.join('artifacts', 'uneven_discriminator_and_generator_training', 'discriminator_update_{}'.format(discriminator_update), str(i))
+
+            args = [
+                'pcgan_v2.py',
+                '--artifacts_dir', artifacts_dir,
+                '--discriminator_name', 'resnet_small_discriminator',
+                '--generator_name', 'unet_generator',
+                '--in_memory', 'true',
+                '--mode', mode,
+                '--discriminator_update_interval', str(discriminator_update)
+            ]
+
+            stack.append((args, artifacts_dir))
+    return stack
+
 def fc_vs_conv_discriminator_and_generator(mode):
     discriminator_names = ['fc_discriminator', 'resnet18_discriminator']
     generator_names     = ['fc_generator', 'unet_generator']
@@ -114,6 +135,7 @@ def main():
         'fc_vs_conv_discriminator_and_generator' : fc_vs_conv_discriminator_and_generator,
         'secret_attributes' : secret_attributes,
         'train_classifiers' : train_classifiers,
+        'uneven_discriminator_and_generator_training' : uneven_discriminator_and_generator_training,
     }
 
     gpu_busy = {}
