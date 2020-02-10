@@ -1,3 +1,14 @@
+# Instructions to train model
+
+## Download data
+
+	cd data
+	sh doit.sh
+
+# Instructions to reproduce results
+
+
+
 # Relevant files
 
 pcgan.py
