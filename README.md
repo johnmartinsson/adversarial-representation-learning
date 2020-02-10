@@ -71,7 +71,10 @@ To evaluate the main method experiment:
 	python run_experiment.py --gpus 0 1 --experiment_name=attributes_experiment --mode=evaluate
 	python run_experiment.py --gpus 0 1 --experiment_name=filter_experiment --mode=evaluate
 
-To evaluate the baseline. Since the update of the filter model is independent of the generator we can simply copy the weights of the filter model from the main experiment and use them to evaluate the baseline. The main difference is that we ONLY run the images through the filter in this evaluation.
+To evaluate the baseline. Since the update of the filter model is independent
+of the generator we can simply copy the weights of the filter model from the
+main experiment and use them to evaluate the baseline. The main difference is
+that we ONLY run the images through the filter in this evaluation.
 
 	cp -r artifacts/attributes_experiment artifacts/attributes_baseline_experiment
 	python run_experiment.py --gpus 0 1 --experiment_name=attributes_baseline_experiment --mode=evaluate
