@@ -1,4 +1,4 @@
-name: pytorch
+name: pcgan
 channels:
   - conda-forge
   - anaconda

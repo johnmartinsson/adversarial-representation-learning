@@ -44,6 +44,10 @@ device = "cuda:{}".format(torch.cuda.current_device())
 
 os.makedirs("images", exist_ok=True)
 
+###############################################################################
+# Hyperparameters
+###############################################################################
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--n_epochs", type=int, default=200, help="number of epochs of training")
 parser.add_argument("--batch_size", type=int, default=64, help="size of the batches")
@@ -54,7 +58,6 @@ parser.add_argument("--n_workers", type=int, default=8, help="number of cpu thre
 parser.add_argument("--eps", type=float, default=0.5, help="distortion budget")
 parser.add_argument("--lambd", type=float, default=100000.0, help="squared penalty")
 parser.add_argument("--latent_dim", type=int, default=1024, help="dimensionality of the latent space")
-#parser.add_argument("--encoder_dim", type=int, default=128, help="dimensionality of the representation space")
 parser.add_argument("--embedding_dim", type=int, default=128, help="dimensionality of embedding space")
 parser.add_argument("--n_classes", type=int, default=2, help="number of classes for dataset")
 parser.add_argument("--img_size", type=int, default=64, help="size of each image dimension")
@@ -81,15 +84,11 @@ img_shape = (opt.channels, opt.img_size, opt.img_size)
 cuda = True if torch.cuda.is_available() else False
 
 # summary writer
-#artifacts_path = 'artifacts/{}_eps_{}_lambd_{}_embedding_dim_{}_lr_{}_rf_{}/'.format(opt.name, opt.eps, opt.lambd, opt.embedding_dim, opt.lr, opt.use_real_fake)
 artifacts_path = opt.artifacts_dir
 os.makedirs(artifacts_path, exist_ok=True)
 writer = SummaryWriter(artifacts_path)
 
 # fixed classifiers
-#secret_classifier = utils.get_discriminator_model('resnet_small', num_classes=2, pretrained=False, device=device, weights_path='./artifacts/fixed_resnet_small/classifier_secret_{}x{}.h5'.format(opt.img_size, opt.img_size))
-#utility_classifier = utils.get_discriminator_model('resnet_small', num_classes=2, pretrained=False, device=device, weights_path='./artifacts/fixed_resnet_small/classifier_utility_{}x{}.h5'.format(opt.img_size, opt.img_size))
-
 secret_classifier = utils.get_discriminator_model('resnet18', num_classes=2, pretrained=False, device=device, weights_path='./artifacts/fixed_classifiers/{}/classifier_{}x{}.h5'.format(opt.secret_attr, opt.img_size, opt.img_size))
 utility_classifier = utils.get_discriminator_model('resnet18', num_classes=2, pretrained=False, device=device, weights_path='./artifacts/fixed_classifiers/{}/classifier_{}x{}.h5'.format(opt.utility_attr, opt.img_size, opt.img_size))
 
@@ -123,8 +122,6 @@ else:
 
 print("Generator parameters: ", utils.count_parameters(generator))
 print("Filter parameters: ", utils.count_parameters(filter))
-#print("Generator encoder parameters: ", utils.count_parameters(generator.encoder))
-#print("Generator decoder parameters: ", utils.count_parameters(generator.decoder))
 print("Discriminator secret parameters: ", utils.count_parameters(discriminator))
 print("Discriminator real/fake parameters: ", utils.count_parameters(discriminator_rf))
 
@@ -138,6 +135,10 @@ if cuda:
     adversarial_rf_loss.cuda()
     distortion_loss.cuda()
     adv_secret_classifier.cuda()
+
+###############################################################################
+# Load the training and validateion/test data
+###############################################################################
 
 train_dataloader = torch.utils.data.DataLoader(
     celeba.CelebADataset(
@@ -191,14 +192,338 @@ optimizer_f = torch.optim.Adam(filter.parameters(), lr=opt.lr, betas=(opt.b1, op
 optimizer_d = torch.optim.Adam(discriminator.parameters(), lr=opt.lr, betas=(opt.b1, opt.b2))
 optimizer_adv = torch.optim.Adam(adv_secret_classifier.parameters(), lr=opt.lr, betas=(opt.b1, opt.b2))
 optimizer_tmp = torch.optim.Adam(tmp_secret_classifier.parameters(), lr=opt.lr, betas=(opt.b1, opt.b2))
-#optimizer_g = torch.optim.Adam(list(generator.parameters()) + list(filter.parameters()), lr=opt.lr, betas=(opt.b1, opt.b2))
 optimizer_g = torch.optim.Adam(generator.parameters(), lr=opt.lr, betas=(opt.b1, opt.b2))
 optimizer_d_rf = torch.optim.Adam(discriminator_rf.parameters(), lr=opt.lr, betas=(opt.b1, opt.b2))
 
 FloatTensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
 LongTensor = torch.cuda.LongTensor if cuda else torch.LongTensor
 
+def train(i_epoch):
+    """ Runs one training epoch. """
+    # set train mode
+
+    filter.train()
+    discriminator.train()
+    generator.train()
+    discriminator_rf.train()
+
+
+    for i_batch, batch in tqdm.tqdm(enumerate(train_dataloader)):
+        imgs   = batch['image']
+        secret = batch['secret'].float()
+        secret = secret.view(secret.size(0))
+
+        if cuda:
+            imgs = imgs.cuda()
+            secret = secret.cuda()
+
+        batch_size = imgs.shape[0]
+
+        # -----------------
+        #  Train Filter
+        # -----------------
+        if opt.use_filter:
+            optimizer_f.zero_grad()
+
+            # sample noise as filter input
+            z = torch.randn(batch_size, opt.latent_dim).cuda()
+
+            # filter a batch of images
+            filter_imgs = filter(imgs, z, secret.long())
+            pred_secret = discriminator(filter_imgs)
+
+            # loss measures filters's ability to fool the discriminator under constrained distortion
+            ones = Variable(FloatTensor(secret.shape).fill_(1.0), requires_grad=False)
+            target = ones-secret.float()
+            target = target.view(target.size(0)) #, -1)
+            f_adversary_loss = adversarial_loss(pred_secret, target.long())
+            f_distortion_loss = distortion_loss(filter_imgs, imgs)
+
+            f_loss = f_adversary_loss + opt.lambd * torch.pow(torch.relu(f_distortion_loss-opt.eps), 2)
+
+            #if not opt.use_real_fake:
+            f_loss.backward()
+            optimizer_f.step()
+
+        # ------------------------
+        # Train Generator (Real/Fake)
+        # ------------------------
+        if opt.use_real_fake:
+            optimizer_g.zero_grad()
+            # sample noise as filter input
+            z1 = torch.randn(batch_size, opt.latent_dim).cuda()
+
+            # filter a batch of images
+            if opt.use_filter:
+                filter_imgs = filter(imgs, z1, secret.long())
+            else:
+                filter_imgs = imgs
+
+            # sample noise as generator input
+            z2 = torch.randn(batch_size, opt.latent_dim).cuda()
+
+            # sample secret
+            gen_secret = Variable(LongTensor(np.random.choice([0.0, 1.0], batch_size)))
+
+            # generate a batch of images
+            gen_imgs = generator(filter_imgs, z2, gen_secret)
+
+            # loss measures generator's ability to fool the discriminator
+            pred_secret = discriminator_rf(gen_imgs)
+            g_adversary_loss = adversarial_rf_loss(pred_secret, gen_secret)
+            g_distortion_loss = distortion_loss(gen_imgs, imgs)
+
+            g_loss = g_adversary_loss + opt.lambd * torch.pow(torch.relu(g_distortion_loss-opt.eps), 2)
+
+            g_loss.backward()
+            optimizer_g.step()
+
+        # ---------------------
+        #  Train Discriminator
+        # ---------------------
+
+        if opt.use_filter:
+            optimizer_d.zero_grad()
+
+            pred_secret = discriminator(filter_imgs.detach())
+            d_loss = adversarial_loss(pred_secret, secret.long())
+
+            d_loss.backward()
+            optimizer_d.step()
+
+        # --------------------------------
+        #  Train Discriminator (Real/Fake)
+        # --------------------------------
+
+        if i_batch % opt.discriminator_update_interval == 0:
+            if opt.use_real_fake:
+                optimizer_d_rf.zero_grad()
+
+                c_imgs = torch.cat((imgs, gen_imgs.detach()), axis=1)
+                real_pred_secret = discriminator_rf(imgs)
+                fake_pred_secret = discriminator_rf(gen_imgs.detach())
+
+                fake_secret = Variable(LongTensor(fake_pred_secret.size(0)).fill_(2.0), requires_grad=False)
+                d_rf_loss_real = adversarial_rf_loss(real_pred_secret, secret.long())
+                d_rf_loss_fake = adversarial_rf_loss(fake_pred_secret, fake_secret)
+
+                d_rf_loss = (d_rf_loss_real + d_rf_loss_fake) / 2
+
+                d_rf_loss.backward()
+                optimizer_d_rf.step()
+
+        if i_batch % opt.log_interval == 0:
+            if opt.use_filter:
+                writer.add_scalar('loss/d_loss', d_loss.item(), i_batch + i_epoch*len(train_dataloader))
+                writer.add_scalar('loss/f_loss', f_loss.item(), i_batch + i_epoch*len(train_dataloader))
+            if opt.use_real_fake:
+                if i_batch % opt.discriminator_update_interval == 0:
+                    writer.add_scalar('loss/d_rf_loss', d_rf_loss.item(), i_batch + i_epoch*len(train_dataloader))
+                writer.add_scalar('loss/g_loss', g_loss.item(), i_batch + i_epoch*len(train_dataloader))
+
+def compute_activation_statistics(act):
+    mu = np.mean(act, axis=0)
+    sigma = np.cov(act, rowvar=False)
+    return mu, sigma
+
+def compute_frechet_inception_distance(acts1, acts2):
+    mu1, sigma1 = compute_activation_statistics(acts1)
+    mu2, sigma2 = compute_activation_statistics(acts2)
+
+    mu1 = np.atleast_1d(mu1)
+    mu2 = np.atleast_1d(mu2)
+
+    sigma1 = np.atleast_2d(sigma1)
+    sigma2 = np.atleast_2d(sigma2)
+
+    diff = mu1 - mu2
+
+    # Product might be almost singular
+    covmean, _ = scipy.linalg.sqrtm(sigma1.dot(sigma2), disp=False)
+    if not np.isfinite(covmean).all():
+        msg = ('fid calculation produces singular product; '
+               'adding %s to diagonal of cov estimates') % eps
+        print(msg)
+        offset = np.eye(sigma1.shape[0]) * eps
+        covmean = scipy.linalg.sqrtm((sigma1 + offset).dot(sigma2 + offset))
+
+    # Numerical error might give slight imaginary component
+    if np.iscomplexobj(covmean):
+        if not np.allclose(np.diagonal(covmean).imag, 0, atol=1e-3):
+            m = np.max(np.abs(covmean.imag))
+            raise ValueError('Imaginary component {}'.format(m))
+        covmean = covmean.real
+
+    tr_covmean = np.trace(covmean)
+
+    return (diff.dot(diff) + np.trace(sigma1) +
+            np.trace(sigma2) - 2 * tr_covmean)
+
+def validate():
+    """ Runs one validation epoch. 
+
+        on validation set if --mode=train
+        on test set if       --mode=evaluate
+    
+    """
+
+    # set eval mode
+    filter.eval()
+    discriminator.eval()
+    generator.eval()
+    discriminator_rf.eval()
+
+    running_secret_acc = 0.0
+    running_secret_adv_acc = 0.0
+    running_secret_gen_acc = 0.0
+    running_utility_acc = 0.0
+
+    acts1 = []
+    acts2 = []
+
+    for i_batch, batch in tqdm.tqdm(enumerate(valid_dataloader, 0)):
+        imgs  = batch['image'].cuda()
+        utility = batch['utility'].float().cuda()
+        secret  = batch['secret'].float().cuda()
+        secret  = secret.view(secret.size(0))
+        utility = utility.view(utility.size(0))
+
+        # Sample noise as filter input
+        batch_size = imgs.shape[0]
+        z = torch.randn(batch_size, opt.latent_dim).cuda()
+
+        if opt.use_filter:
+            filter_imgs = filter(imgs, z, secret.long())
+        else:
+            filter_imgs = imgs
+
+        if opt.use_real_fake:
+            z = torch.randn(batch_size, opt.latent_dim).cuda()
+            gen_secret = Variable(LongTensor(np.random.choice([0.0, 1.0], batch_size)))
+            filter_imgs = generator(filter_imgs, z, gen_secret)
+
+        secret_adv_pred  = discriminator(filter_imgs)
+        secret_pred_fix  = secret_classifier(filter_imgs)
+        utility_pred_fix = utility_classifier(filter_imgs)
+
+        def accuracy(pred, true):
+            u   = true.cpu().numpy().flatten()
+            p   = np.argmax(pred.cpu().detach().numpy(), axis=1)
+            acc = np.sum(u == p)/len(u)
+
+            return acc
+
+        running_secret_acc  += accuracy(secret_pred_fix, secret)
+        running_secret_adv_acc  += accuracy(secret_adv_pred, secret)
+        if opt.use_real_fake:
+            running_secret_gen_acc  += accuracy(secret_pred_fix, gen_secret)
+        running_utility_acc += accuracy(utility_pred_fix, utility)
+
+        inception_v3.eval()
+        a1 = inception_v3(imgs)[0]
+        a2 = inception_v3(filter_imgs)[0]
+        acts1.append(np.squeeze(a1.detach().cpu().numpy()))
+        acts2.append(np.squeeze(a2.detach().cpu().numpy()))
+
+    acts1 = np.concatenate(acts1, axis=0)
+    acts2 = np.concatenate(acts2, axis=0)
+
+    fid = compute_frechet_inception_distance(acts1, acts2)
+
+    secret_acc  = running_secret_acc / len(valid_dataloader)
+    secret_adv_acc  = running_secret_adv_acc / len(valid_dataloader)
+    utility_acc = running_utility_acc / len(valid_dataloader)
+    gen_secret_acc = running_secret_gen_acc / len(valid_dataloader)
+
+    return secret_acc, secret_adv_acc, utility_acc, gen_secret_acc, fid, imgs, filter_imgs
+
+def visualize():
+    """ Runs through the validation data and visualize the output of the model.
+    """
+
+    filter.eval()
+    generator.eval()
+
+    for i_batch, batch in tqdm.tqdm(enumerate(valid_dataloader, 0)):
+        imgs  = batch['image'].cuda()
+        utility = batch['utility'].float().cuda()
+        secret  = batch['secret'].float().cuda()
+        secret  = secret.view(secret.size(0))
+        utility = utility.view(utility.size(0))
+
+        # Sample noise as filter input
+        batch_size = imgs.shape[0]
+
+        z = torch.randn(batch_size, opt.latent_dim).cuda()
+        z1 = torch.randn(batch_size, opt.latent_dim).cuda()
+        z2 = torch.randn(batch_size, opt.latent_dim).cuda()
+
+        if opt.use_filter:
+            filter_imgs = filter(imgs, z, secret.long())
+        else:
+            filter_imgs = imgs
+
+        if opt.use_real_fake:
+            gen_secret_0 = Variable(LongTensor(np.random.choice([0.0], batch_size)))
+            gen_secret_1 = Variable(LongTensor(np.random.choice([1.0], batch_size)))
+            filter_imgs_0 = generator(filter_imgs, z1, gen_secret_0)
+            filter_imgs_1 = generator(filter_imgs, z2, gen_secret_1)
+        save_dir = os.path.join(artifacts_path, 'visualize')
+        utils.save_images_2(imgs, filter_imgs, filter_imgs_0, filter_imgs_1, save_dir, i_batch)
+
+    return
+
+def predict(attr):
+    """ Makes predictions for original images and censored images and stores
+    the results. """
+
+    preds       = np.zeros((len(valid_dataloader), 2))
+    gen_preds   = np.zeros((len(valid_dataloader), 2))
+    secrets     = np.zeros((len(valid_dataloader), 1))
+    gen_secrets = np.zeros((len(valid_dataloader)))
+
+    classifier = utils.get_discriminator_model('resnet18', num_classes=2, pretrained=False, device=device, weights_path='./artifacts/fixed_classifiers/{}/classifier_{}x{}.h5'.format(attr, opt.img_size, opt.img_size))
+
+    # set eval mode
+    classifier.eval()
+    generator.eval()
+    filter.eval()
+
+    if cuda:
+        classifier.cuda()
+    # transform images
+    for i_batch, batch in tqdm.tqdm(enumerate(valid_dataloader, 0)):
+        imgs  = batch['image'].cuda()
+        secret  = batch['secret'].float().cuda()
+
+        batch_size  = imgs.shape[0]
+        z1 = torch.randn(batch_size, opt.latent_dim).cuda()
+        z2 = torch.randn(batch_size, opt.latent_dim).cuda()
+
+        if opt.use_filter:
+            filter_imgs = filter(imgs, z1, secret.long())
+        else:
+            filter_imgs = imgs
+
+        gen_secret  = Variable(LongTensor(np.random.choice([0.0, 1.0], batch_size)))
+        gen_imgs    = generator(filter_imgs, z2, gen_secret)
+
+        pred        = classifier(imgs)
+        gen_pred    = classifier(gen_imgs)
+
+        preds       = np.concatenate((preds,       pred.detach().cpu().numpy()))
+        gen_preds   = np.concatenate((gen_preds,   gen_pred.detach().cpu().numpy()))
+        secrets     = np.concatenate((secrets,     secret.cpu().numpy()))
+        gen_secrets = np.concatenate((gen_secrets, gen_secret.detach().cpu().numpy()))
+
+    # save transformed images
+    file_name = "predict_{}_{}x{}.pkl".format(attr, opt.img_size, opt.img_size)
+    with open(os.path.join(opt.artifacts_dir, file_name), 'wb') as f:
+        pickle.dump((preds, gen_preds, secrets, gen_secrets), f, pickle.HIGHEST_PROTOCOL)
+
 def train_adversary():
+    """ Trains an adversary on data from the data censoring process. """
+
     def accuracy(pred, true):
         u   = true.cpu().numpy().flatten()
         p   = np.argmax(pred.cpu().detach().numpy(), axis=1)
@@ -218,7 +543,6 @@ def train_adversary():
 
             batch_size = imgs.shape[0]
 
-            #z1 = Variable(FloatTensor(np.random.normal(0, 1, (batch_size, opt.latent_dim))))
             z1 = torch.randn(batch_size, opt.latent_dim).cuda()
 
             if opt.use_filter:
@@ -227,7 +551,6 @@ def train_adversary():
                 filter_imgs = imgs
 
             if opt.use_real_fake:
-                #z2 = Variable(FloatTensor(np.random.normal(0, 1, (batch_size, opt.latent_dim))))
                 z2 = torch.randn(batch_size, opt.latent_dim).cuda()
                 gen_secret = Variable(LongTensor(np.random.choice([0.0, 1.0], batch_size)))
                 filter_imgs = generator(filter_imgs, z2, gen_secret)
@@ -267,7 +590,6 @@ def train_adversary():
 
         batch_size = imgs.shape[0]
 
-        #z1 = Variable(FloatTensor(np.random.normal(0, 1, (batch_size, opt.latent_dim))))
         z1 = torch.randn(batch_size, opt.latent_dim).cuda()
         if opt.use_filter:
             filter_imgs = filter(imgs, z1, secret.long())
@@ -275,7 +597,6 @@ def train_adversary():
             filter_imgs = imgs
 
         if opt.use_real_fake:
-            #z2 = Variable(FloatTensor(np.random.normal(0, 1, (batch_size, opt.latent_dim))))
             z2 = torch.randn(batch_size, opt.latent_dim).cuda()
             gen_secret = Variable(LongTensor(np.random.choice([0.0, 1.0], batch_size)))
             filter_imgs = generator(filter_imgs, z2, gen_secret)
@@ -317,17 +638,12 @@ def predict_images():
     for i in range(nb_samples):
         batch   = dataset[-i]
         imgs    = batch['image'].cuda().view(1, 3, opt.img_size, opt.img_size)
-        #utility = batch['utility'].float().cuda()
         secret  = batch['secret'].float().cuda()
         secret  = secret.view(secret.size(0))
-        #utility = utility.view(utility.size(0))
 
         # Sample noise as filter input
         batch_size = imgs.shape[0]
 
-        #z = Variable(FloatTensor(np.random.normal(0, 1, (batch_size, opt.latent_dim))))
-        #z1 = Variable(FloatTensor(np.random.normal(0, 1, (batch_size, opt.latent_dim))))
-        #z2 = Variable(FloatTensor(np.random.normal(0, 1, (batch_size, opt.latent_dim))))
         z = torch.randn(batch_size, opt.latent_dim).cuda()
         z1 = torch.randn(batch_size, opt.latent_dim).cuda()
         z2 = torch.randn(batch_size, opt.latent_dim).cuda()
@@ -353,339 +669,6 @@ def predict_images():
 
     return
 
-
-
-def visualize():
-    filter.eval()
-    generator.eval()
-
-    for i_batch, batch in tqdm.tqdm(enumerate(valid_dataloader, 0)):
-        imgs  = batch['image'].cuda()
-        utility = batch['utility'].float().cuda()
-        secret  = batch['secret'].float().cuda()
-        secret  = secret.view(secret.size(0))
-        utility = utility.view(utility.size(0))
-
-        # Sample noise as filter input
-        batch_size = imgs.shape[0]
-
-        #z = Variable(FloatTensor(np.random.normal(0, 1, (batch_size, opt.latent_dim))))
-        #z1 = Variable(FloatTensor(np.random.normal(0, 1, (batch_size, opt.latent_dim))))
-        #z2 = Variable(FloatTensor(np.random.normal(0, 1, (batch_size, opt.latent_dim))))
-        z = torch.randn(batch_size, opt.latent_dim).cuda()
-        z1 = torch.randn(batch_size, opt.latent_dim).cuda()
-        z2 = torch.randn(batch_size, opt.latent_dim).cuda()
-
-        if opt.use_filter:
-            filter_imgs = filter(imgs, z, secret.long())
-        else:
-            filter_imgs = imgs
-
-        if opt.use_real_fake:
-            gen_secret_0 = Variable(LongTensor(np.random.choice([0.0], batch_size)))
-            gen_secret_1 = Variable(LongTensor(np.random.choice([1.0], batch_size)))
-            filter_imgs_0 = generator(filter_imgs, z1, gen_secret_0)
-            filter_imgs_1 = generator(filter_imgs, z2, gen_secret_1)
-        save_dir = os.path.join(artifacts_path, 'visualize')
-        utils.save_images_2(imgs, filter_imgs, filter_imgs_0, filter_imgs_1, save_dir, i_batch)
-
-    return
-
-def compute_activation_statistics(act):
-    mu = np.mean(act, axis=0)
-    sigma = np.cov(act, rowvar=False)
-    return mu, sigma
-
-def compute_frechet_inception_distance(acts1, acts2):
-    mu1, sigma1 = compute_activation_statistics(acts1)
-    mu2, sigma2 = compute_activation_statistics(acts2)
-
-    mu1 = np.atleast_1d(mu1)
-    mu2 = np.atleast_1d(mu2)
-
-    sigma1 = np.atleast_2d(sigma1)
-    sigma2 = np.atleast_2d(sigma2)
-
-    diff = mu1 - mu2
-
-    # Product might be almost singular
-    covmean, _ = scipy.linalg.sqrtm(sigma1.dot(sigma2), disp=False)
-    if not np.isfinite(covmean).all():
-        msg = ('fid calculation produces singular product; '
-               'adding %s to diagonal of cov estimates') % eps
-        print(msg)
-        offset = np.eye(sigma1.shape[0]) * eps
-        covmean = scipy.linalg.sqrtm((sigma1 + offset).dot(sigma2 + offset))
-
-    # Numerical error might give slight imaginary component
-    if np.iscomplexobj(covmean):
-        if not np.allclose(np.diagonal(covmean).imag, 0, atol=1e-3):
-            m = np.max(np.abs(covmean.imag))
-            raise ValueError('Imaginary component {}'.format(m))
-        covmean = covmean.real
-
-    tr_covmean = np.trace(covmean)
-
-    return (diff.dot(diff) + np.trace(sigma1) +
-            np.trace(sigma2) - 2 * tr_covmean)
-
-def validate():
-    # set eval mode
-    filter.eval()
-    discriminator.eval()
-    generator.eval()
-    discriminator_rf.eval()
-
-    running_secret_acc = 0.0
-    running_secret_adv_acc = 0.0
-    running_secret_gen_acc = 0.0
-    running_utility_acc = 0.0
-
-    acts1 = []
-    acts2 = []
-
-    for i_batch, batch in tqdm.tqdm(enumerate(valid_dataloader, 0)):
-        imgs  = batch['image'].cuda()
-        utility = batch['utility'].float().cuda()
-        secret  = batch['secret'].float().cuda()
-        secret  = secret.view(secret.size(0))
-        utility = utility.view(utility.size(0))
-
-        # Sample noise as filter input
-        batch_size = imgs.shape[0]
-        #z = Variable(FloatTensor(np.random.normal(0, 1, (batch_size, opt.latent_dim))))
-        z = torch.randn(batch_size, opt.latent_dim).cuda()
-
-        if opt.use_filter:
-            filter_imgs = filter(imgs, z, secret.long())
-        else:
-            filter_imgs = imgs
-
-        if opt.use_real_fake:
-            #z = Variable(FloatTensor(np.random.normal(0, 1, (batch_size, opt.latent_dim))))
-            z = torch.randn(batch_size, opt.latent_dim).cuda()
-            gen_secret = Variable(LongTensor(np.random.choice([0.0, 1.0], batch_size)))
-            filter_imgs = generator(filter_imgs, z, gen_secret)
-
-        secret_adv_pred  = discriminator(filter_imgs)
-        secret_pred_fix  = secret_classifier(filter_imgs)
-        utility_pred_fix = utility_classifier(filter_imgs)
-
-        def accuracy(pred, true):
-            u   = true.cpu().numpy().flatten()
-            p   = np.argmax(pred.cpu().detach().numpy(), axis=1)
-            acc = np.sum(u == p)/len(u)
-
-            return acc
-
-        running_secret_acc  += accuracy(secret_pred_fix, secret)
-        running_secret_adv_acc  += accuracy(secret_adv_pred, secret)
-        if opt.use_real_fake:
-            running_secret_gen_acc  += accuracy(secret_pred_fix, gen_secret)
-        running_utility_acc += accuracy(utility_pred_fix, utility)
-
-        inception_v3.eval()
-        a1 = inception_v3(imgs)[0]
-        a2 = inception_v3(filter_imgs)[0]
-        acts1.append(np.squeeze(a1.detach().cpu().numpy()))
-        acts2.append(np.squeeze(a2.detach().cpu().numpy()))
-
-    acts1 = np.concatenate(acts1, axis=0)
-    acts2 = np.concatenate(acts2, axis=0)
-
-    fid = compute_frechet_inception_distance(acts1, acts2)
-
-    secret_acc  = running_secret_acc / len(valid_dataloader)
-    secret_adv_acc  = running_secret_adv_acc / len(valid_dataloader)
-    utility_acc = running_utility_acc / len(valid_dataloader)
-    gen_secret_acc = running_secret_gen_acc / len(valid_dataloader)
-
-    return secret_acc, secret_adv_acc, utility_acc, gen_secret_acc, fid, imgs, filter_imgs
-
-def predict(attr):
-    preds       = np.zeros((len(valid_dataloader), 2))
-    gen_preds   = np.zeros((len(valid_dataloader), 2))
-    secrets     = np.zeros((len(valid_dataloader), 1))
-    gen_secrets = np.zeros((len(valid_dataloader)))
-
-    classifier = utils.get_discriminator_model('resnet18', num_classes=2, pretrained=False, device=device, weights_path='./artifacts/fixed_classifiers/{}/classifier_{}x{}.h5'.format(attr, opt.img_size, opt.img_size))
-
-    # set eval mode
-    classifier.eval()
-    generator.eval()
-    filter.eval()
-
-    if cuda:
-        classifier.cuda()
-    # transform images
-    for i_batch, batch in tqdm.tqdm(enumerate(valid_dataloader, 0)):
-        imgs  = batch['image'].cuda()
-        secret  = batch['secret'].float().cuda()
-        #print(secret.shape)
-        #print(secrets.shape)
-
-        batch_size  = imgs.shape[0]
-        #z1 = Variable(FloatTensor(np.random.normal(0, 1, (batch_size, opt.latent_dim))))
-        #z2 = Variable(FloatTensor(np.random.normal(0, 1, (batch_size, opt.latent_dim))))
-        z1 = torch.randn(batch_size, opt.latent_dim).cuda()
-        z2 = torch.randn(batch_size, opt.latent_dim).cuda()
-
-        if opt.use_filter:
-            filter_imgs = filter(imgs, z1, secret.long())
-        else:
-            filter_imgs = imgs
-
-        gen_secret  = Variable(LongTensor(np.random.choice([0.0, 1.0], batch_size)))
-        gen_imgs    = generator(filter_imgs, z2, gen_secret)
-
-        pred        = classifier(imgs)
-        gen_pred    = classifier(gen_imgs)
-
-        preds       = np.concatenate((preds,       pred.detach().cpu().numpy()))
-        gen_preds   = np.concatenate((gen_preds,   gen_pred.detach().cpu().numpy()))
-        secrets     = np.concatenate((secrets,     secret.cpu().numpy()))
-        gen_secrets = np.concatenate((gen_secrets, gen_secret.detach().cpu().numpy()))
-
-    # save transformed images
-    file_name = "predict_{}_{}x{}.pkl".format(attr, opt.img_size, opt.img_size)
-    with open(os.path.join(opt.artifacts_dir, file_name), 'wb') as f:
-        pickle.dump((preds, gen_preds, secrets, gen_secrets), f, pickle.HIGHEST_PROTOCOL)
-
-
-def train(i_epoch):
-    # set train mode
-
-    filter.train()
-    discriminator.train()
-    generator.train()
-    discriminator_rf.train()
-
-
-    for i_batch, batch in tqdm.tqdm(enumerate(train_dataloader)):
-        imgs   = batch['image']
-        secret = batch['secret'].float()
-        secret = secret.view(secret.size(0))
-
-        if cuda:
-            imgs = imgs.cuda()
-            secret = secret.cuda()
-
-        batch_size = imgs.shape[0]
-
-        # -----------------
-        #  Train Filter
-        # -----------------
-        #if opt.use_real_fake:
-        #    optimizer_g.zero_grad()
-        #else:
-        if opt.use_filter:
-            optimizer_f.zero_grad()
-
-            # sample noise as filter input
-            #z = Variable(FloatTensor(np.random.normal(0, 1, (batch_size, opt.latent_dim))))
-            z = torch.randn(batch_size, opt.latent_dim).cuda()
-
-            # filter a batch of images
-            filter_imgs = filter(imgs, z, secret.long())
-            pred_secret = discriminator(filter_imgs)
-
-            # loss measures filters's ability to fool the discriminator under constrained distortion
-            ones = Variable(FloatTensor(secret.shape).fill_(1.0), requires_grad=False)
-            target = ones-secret.float()
-            target = target.view(target.size(0)) #, -1)
-            f_adversary_loss = adversarial_loss(pred_secret, target.long())
-            f_distortion_loss = distortion_loss(filter_imgs, imgs)
-
-            f_loss = f_adversary_loss + opt.lambd * torch.pow(torch.relu(f_distortion_loss-opt.eps), 2)
-
-            #if not opt.use_real_fake:
-            f_loss.backward()
-            optimizer_f.step()
-
-        # ------------------------
-        # Train Generator (Real/Fake)
-        # ------------------------
-        if opt.use_real_fake:
-            optimizer_g.zero_grad()
-            # sample noise as filter input
-            #z1 = Variable(FloatTensor(np.random.normal(0, 1, (batch_size, opt.latent_dim))))
-            z1 = torch.randn(batch_size, opt.latent_dim).cuda()
-
-            # filter a batch of images
-            if opt.use_filter:
-                filter_imgs = filter(imgs, z1, secret.long())
-            else:
-                filter_imgs = imgs
-
-            # sample noise as generator input
-            #z2 = Variable(FloatTensor(np.random.normal(0, 1, (batch_size, opt.latent_dim))))
-            z2 = torch.randn(batch_size, opt.latent_dim).cuda()
-
-            # sample secret
-            gen_secret = Variable(LongTensor(np.random.choice([0.0, 1.0], batch_size)))
-
-            # generate a batch of images
-            gen_imgs = generator(filter_imgs, z2, gen_secret)
-
-            # loss measures generator's ability to fool the discriminator
-            #pred_secret = discriminator_rf(gen_imgs, gen_secret)
-            pred_secret = discriminator_rf(gen_imgs)
-            g_adversary_loss = adversarial_rf_loss(pred_secret, gen_secret)
-            g_distortion_loss = distortion_loss(gen_imgs, imgs)
-
-            g_loss = g_adversary_loss + opt.lambd * torch.pow(torch.relu(g_distortion_loss-opt.eps), 2)
-
-            #total_loss = f_loss + g_loss
-            #total_loss.backward()
-            g_loss.backward()
-            optimizer_g.step()
-
-        # ---------------------
-        #  Train Discriminator
-        # ---------------------
-
-        if opt.use_filter:
-            optimizer_d.zero_grad()
-
-            pred_secret = discriminator(filter_imgs.detach())
-            d_loss = adversarial_loss(pred_secret, secret.long())
-
-            d_loss.backward()
-            optimizer_d.step()
-
-        # --------------------------------
-        #  Train Discriminator (Real/Fake)
-        # --------------------------------
-
-        if i_batch % opt.discriminator_update_interval == 0:
-            if opt.use_real_fake:
-                optimizer_d_rf.zero_grad()
-
-                c_imgs = torch.cat((imgs, gen_imgs.detach()), axis=1)
-                real_pred_secret = discriminator_rf(imgs) #, secret.long())
-                fake_pred_secret = discriminator_rf(gen_imgs.detach()) #, gen_secret)
-
-                fake_secret = Variable(LongTensor(fake_pred_secret.size(0)).fill_(2.0), requires_grad=False)
-                d_rf_loss_real = adversarial_rf_loss(real_pred_secret, secret.long())
-                d_rf_loss_fake = adversarial_rf_loss(fake_pred_secret, fake_secret)
-
-                d_rf_loss = (d_rf_loss_real + d_rf_loss_fake) / 2
-
-                d_rf_loss.backward()
-                optimizer_d_rf.step()
-
-        if i_batch % opt.log_interval == 0:
-            if opt.use_filter:
-                writer.add_scalar('loss/d_loss', d_loss.item(), i_batch + i_epoch*len(train_dataloader))
-                writer.add_scalar('loss/f_loss', f_loss.item(), i_batch + i_epoch*len(train_dataloader))
-            if opt.use_real_fake:
-                if i_batch % opt.discriminator_update_interval == 0:
-                    writer.add_scalar('loss/d_rf_loss', d_rf_loss.item(), i_batch + i_epoch*len(train_dataloader))
-                writer.add_scalar('loss/g_loss', g_loss.item(), i_batch + i_epoch*len(train_dataloader))
-
-# ----------
-#  Training
-# ----------
 
 if opt.mode == 'train':
     for i_epoch in range(opt.n_epochs):
