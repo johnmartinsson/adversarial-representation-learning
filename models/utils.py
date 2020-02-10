@@ -36,6 +36,20 @@ def save_images_2(imgs, filter_imgs, filter_imgs_0, filter_imgs_1, save_dir, i_b
 
     save_image(sample_images.data, save_file, nrow=nb_samples, normalize=True)
 
+def save_images_3(imgs, filter_imgs_0, filter_imgs_1, save_dir, i_batch):
+    """Saves a grid of generated digits ranging from 0 to n_classes"""
+    nb_samples = 8
+
+    imgs = imgs[:nb_samples]
+    filter_imgs_0 = filter_imgs_0[:nb_samples]
+    filter_imgs_1 = filter_imgs_1[:nb_samples]
+    sample_images = torch.cat((imgs, filter_imgs_0, filter_imgs_1))
+    os.makedirs(save_dir, exist_ok=True)
+    save_file = os.path.join(save_dir, "{}.png".format(i_batch))
+
+    save_image(sample_images.data, save_file, nrow=nb_samples, normalize=True)
+
+
 
 def save_model(model, path):
     torch.save(model.state_dict(), path)
