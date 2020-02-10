@@ -1,3 +1,9 @@
+###############################################################################
+# Please see pcgan.py for the main method script.
+#
+# This is just an old starting file for preliminary experiments taken from:
+# - https://github.com/eriklindernoren/PyTorch-GAN/blob/master/implementations/cgan/cgan.py
+###############################################################################
 import argparse
 import os
 import numpy as np
