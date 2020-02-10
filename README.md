@@ -1,3 +1,7 @@
+# Relevant files
+
+pcgan.py
+
 # Download data
 
 	cd data
