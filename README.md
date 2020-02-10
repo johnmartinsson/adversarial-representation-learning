@@ -7,6 +7,24 @@
 
 # Instructions to reproduce results
 
+## Setup environment (anaconda)
+
+	conda create --name env python=3.8
+	conda activate env
+	conda install tqdm
+
+
+
+## Train the models
+
+	python run_experiment.py --gpus 0 1 --experiment_name train_classifiers --mode train
+
+	
+
+## Evaluate the models
+
+## Visualize the output of the models
+
 
 
 # Relevant files
