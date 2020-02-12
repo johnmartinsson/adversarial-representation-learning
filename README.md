@@ -79,6 +79,9 @@ that we ONLY run the images through the filter in this evaluation.
 	cp -r artifacts/attributes_experiment artifacts/attributes_baseline_experiment
 	python run_experiment.py --gpus 0 1 --experiment_name=attributes_baseline_experiment --mode=evaluate
 
+## Produce main tables
+TODO: explain how to produce the main tables.
+
 ## Visualize the output of the models
 To visualize the output of the models run:
 
@@ -86,7 +89,7 @@ To visualize the output of the models run:
 
 and check the 
 
-	artifacts/attributes\_experiment/visualization
+	artifacts/attributes_experiment/visualization
 
 folder for the images.
 
