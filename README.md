@@ -50,13 +50,16 @@ To download the data simply run the following commands:
 
 We have noticed that the urls poitning to the Google Drive that hosts the data
 can exceeed their quota. If the script does not work it is probably due to
-this. Try downloading the files manually from the Baidu drive instead
-	
+this. Try downloading the files manually from the Google Drive or if that does not work the Baidu drive
+
 	download imgs_aligned.zip and unzip as imgs
 	download list_eval_partition.txt as data_split.txt
 	download list_attr_celeba.txt as annotations.txt
 	python3 preprocess_annotations.py
 
+all these files need to be in the folder './data' with the correct names before running the preprocessing script.
+
+If you now have the folder './data/imgs' with all the aligned CelebA jpeg images in it, and three csv files called 'trainin_annotations.txt', 'validation_annotations.txt', and 'test_annotations.txt' you are good to go.
 
 ## Setup environment (anaconda)
 Install anaconda.
