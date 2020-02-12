@@ -71,9 +71,9 @@ If you now have
 	│   ├── training_annotations.txt 	# annotations
 	│   ├── validation_annotations.txt
 	│   ├── test_annotations.txt
-	│   ├── 64x64_train.npy                 # images in numpy format
-	│   ├── 64x64_valid.npy
-	│   ├── 64x64_test.npy
+	│   ├── celeba_images_train_64x64.npy   # images in numpy format
+	│   ├── celeba_images_valid_64x64.npy
+	│   ├── celeba_images_test_64x64.npy
 
 you are good to go.
 
