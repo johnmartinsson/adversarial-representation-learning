@@ -48,9 +48,21 @@ To download the data simply run the following commands:
 	cd data
 	sh doit.sh
 
-We have notived that the urls poitning to the Google Drive that hosts the data
-can exceeed their quota from time to time. If the script does not work it is
-probably due to this. Simply check back at a later time.
+We have noticed that the urls poitning to the Google Drive that hosts the data
+can exceeed their quota. If the script does not work it is probably due to
+this. Try downloading the files from the Baidu drive instead and change the doit.sh script to
+
+	
+	#python3 get_drive_file.py 0B7EVK8r0v71pZjFTYXZWM3FlRnM imgs_aligned.zip
+	#python3 get_drive_file.py 0B7EVK8r0v71pblRyaVFSWGxPY0U annotations.txt
+	#python3 get_drive_file.py 0B7EVK8r0v71pY0NSMzRuSXJEVkk data_split.txt
+	unzip imgs_aligned.zip
+	rm imgs_aligned.zip
+	mv img_align_celeba imgs
+	python3 preprocess_annotations.py
+
+That is, basically unzip the aligned CelebA images, change the folder name to
+imgs, and run the preprocessing script for the annotations.
 
 ## Setup environment (anaconda)
 Install anaconda.
