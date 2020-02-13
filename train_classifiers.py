@@ -35,7 +35,7 @@ def main(hparams, writer):
 
     celeba_traindataset = celeba.CelebADataset(
             split='train',
-            in_memory=False, #True,
+            in_memory=True, #True,
             input_shape=input_shape,
             utility_attr='Male',
             secret_attr=hparams.attr,
@@ -45,7 +45,7 @@ def main(hparams, writer):
 
     celeba_validdataset = celeba.CelebADataset(
             split='valid',
-            in_memory=False,
+            in_memory=True,
             input_shape=input_shape,
             utility_attr='Male',
             secret_attr=hparams.attr,
