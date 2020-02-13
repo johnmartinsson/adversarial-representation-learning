@@ -42,6 +42,12 @@ to run the experiments and produce results.
 	    ├── create_adversarial_table.py
 	    .
 
+## Setup environment (anaconda)
+Install anaconda.
+
+	conda env create -f environment.yml
+	conda activate pcgan
+
 ## Download data
 To download the data simply run the following commands:
 
@@ -62,7 +68,7 @@ this. Try downloading the files manually from the Google Drive or if that does n
 
 all these files need to be in the folder './data' with the correct names before running the preprocessing script.
 
-If you now have 
+You should now have
 
 	.
 	├── data
@@ -75,13 +81,12 @@ If you now have
 	│   ├── celeba_images_valid_64x64.npy
 	│   ├── celeba_images_test_64x64.npy
 
-you are good to go.
+in the data folder. Next run
 
-## Setup environment (anaconda)
-Install anaconda.
+	python sanity_check.py
 
-	conda env create -f environment.yml
-	conda activate pcgan
+and open the resulting 'sanity_check.png' image to convince yourself that the
+data is loaded properly.
 
 
 ## Train the models
