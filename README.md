@@ -90,6 +90,8 @@ data is loaded properly.
 
 
 ## Train the models
+List the number of GPUs you want to use to run the experiment. In the examples
+the experiments will run on GPU 0 and GPU 1.
 
 	python run_experiment.py --gpus 0 1 --experiment_name=train_classifiers --mode=train
 	python run_experiment.py --gpus 0 1 --experiment_name=attributes_experiment --mode=train
@@ -109,9 +111,6 @@ that we ONLY run the images through the filter in this evaluation.
 	cp -r artifacts/attributes_experiment artifacts/attributes_baseline_experiment
 	python run_experiment.py --gpus 0 1 --experiment_name=attributes_baseline_experiment --mode=evaluate
 
-## Produce main tables
-TODO: explain how to produce the main tables.
-
 ## Visualize the output of the models
 To visualize the output of the models run:
 
@@ -123,7 +122,14 @@ and check the
 
 folder for the images.
 
-## Visualize the loss-functions during training
+## Produce main tables
+
+	python vis/create_adversarial_table.py			# Table TODO
+	python vis/create_attributes_experiment_table.py        # Table TODO
+	python vis/create_fix_classifier_table.py               # Table TODO
+	python vis/create_filter_experiment_table.py            # Table TODO
+
+## Inspect the loss-functions during training
 To visualize the loss-functions and validation functions during training
 
 	tensorboard --logdir=artifacts/<experiment_path>
