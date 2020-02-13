@@ -1,3 +1,7 @@
+###############################################################################
+# This code has NOT been written by the authors, but all credits have been
+# removed for the anonymous review.
+###############################################################################
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
