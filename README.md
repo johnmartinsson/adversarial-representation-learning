@@ -23,12 +23,7 @@ to run the experiments and produce results.
 	├── environment.yml			# anaconda environment file
 	├── loss_functions.py
 	├── models
-	│   ├── decoder.py
-	│   ├── discriminator.py
-	│   ├── encoder.py
-	│   ├── filter.py
-	│   ├── generator.py
-	│   ├── inception.py
+	│   ├── inception.py  # used to compute FID
 	│   ├── __init__.py
 	│   ├── unet.py				# UNet architecture definition
 	│   └── utils.py
@@ -110,6 +105,8 @@ that we ONLY run the images through the filter in this evaluation.
 
 	cp -r artifacts/attributes_experiment artifacts/attributes_baseline_experiment
 	python run_experiment.py --gpus 0 1 --experiment_name=attributes_baseline_experiment --mode=evaluate
+	cp -r artifacts/filter_experiment artifacts/filter_baseline_experiment
+	python run_experiment.py --gpus 0 1 --experiment_name=filter_baseline_experiment --mode=evaluate
 
 ## Visualize the output of the models
 To visualize the output of the models run:
@@ -130,6 +127,8 @@ held out test data censored with the baseline, only the generator, and our
 method.
 
     python vis/create_filter_experiment_table.py
+
+(Output table is basically transposed w.r.t table in paper.)
 
 ### Table 2
 Table 2. The mean accuracy and standard deviation over five differ- ent random
