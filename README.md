@@ -1,4 +1,4 @@
-# Instructions to train the private conditional generative adversarial network (PCGAN)
+# Instructions to train the privatization network
 In this README we include a detailed description on how to download the data
 used in this study, how to setup the environment to run the scripts in, and how
 to run the experiments and produce results.
