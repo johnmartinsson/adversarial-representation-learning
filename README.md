@@ -139,6 +139,9 @@ between predictions from a fixed classifier trained to predict the row attribute
 and a fixed classifier trained to predict the column attribute, given that the
 column attribute has been censored.
 
+    # need to run additional predictions
+    python run_experiment.py --gpus 0 1 --experiment_name=attributes_experiment --mode=predict
+    # create table
     python vis/create_correlation_table.py
 
 ### Not included in paper
