@@ -20,12 +20,7 @@ import torch.nn.functional as F
 import torch
 
 import models.utils as utils
-from models.encoder import Encoder
-from models.decoder import Decoder
-from models.filter import Filter, ConvFilter
 from models.unet import UNetFilter
-from models.discriminator import Discriminator, ConditionalDiscriminator, ConvDiscriminator
-from models.discriminator import SecretDiscriminator
 from models.inception import InceptionV3
 
 import datasets.celeba as celeba
