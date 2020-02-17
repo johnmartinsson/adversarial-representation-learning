@@ -140,6 +140,33 @@ def filter_experiment(mode):
 
     return stack
 
+def filter_baseline_experiment(mode):
+    stack = deque()
+
+    secret_attributes = ['Smiling'] #, 'Male']
+    epsilons = ['0.01', '0.05', '0.001', '0.005']
+    for use_filter in ['True']:
+        for secret_attribute in secret_attributes:
+            for eps in epsilons:
+                artifacts_dir = os.path.join('artifacts', 'filter_baseline_experiment', '{}_eps_{}_use_filter_{}'.format(secret_attribute, eps, use_filter), '0')
+
+                args = [
+                    'pcgan.py',
+                    '--artifacts_dir', artifacts_dir,
+                    '--discriminator_name', 'resnet_small_discriminator',
+                    '--secret_attr', secret_attribute,
+                    '--img_size', '64',
+                    '--use_real_fake', 'False',
+                    '--use_filter', use_filter,
+                    '--use_cond', 'False',
+                    '--mode', mode,
+                    '--discriminator_update_interval', '3',
+                    '--n_epochs', '100',
+                    '--eps', eps,
+                ]
+                stack.append((args, artifacts_dir))
+
+    return stack
 
 def spawn_experiment(args, gpu, artifacts_dir):
     """ Spawns a process which runs a pcgan.py experiment with the given
