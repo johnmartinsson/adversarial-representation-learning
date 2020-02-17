@@ -133,7 +133,7 @@ def filter_experiment(mode):
                     '--use_cond', 'False',
                     '--mode', mode,
                     '--discriminator_update_interval', '3',
-                    '--n_epochs', '100',
+                    '--n_epochs', '200',
                     '--eps', eps,
                 ]
                 stack.append((args, artifacts_dir))
@@ -161,7 +161,7 @@ def filter_baseline_experiment(mode):
                     '--use_cond', 'False',
                     '--mode', mode,
                     '--discriminator_update_interval', '3',
-                    '--n_epochs', '100',
+                    '--n_epochs', '200',
                     '--eps', eps,
                 ]
                 stack.append((args, artifacts_dir))
