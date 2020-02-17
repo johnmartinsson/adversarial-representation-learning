@@ -33,9 +33,13 @@ def main():
             mean_table_ours[eps].append(np.mean(ours_adv_secret_accs))
             mean_table_bline[eps].append(np.mean(bline_adv_secret_accs))
 
-    #top_row_format = '{:>20} & {:>20} & {:>20} & {:>20} & {:>20} \\\\'
+    top_row_format = '{:>20} & {:>20} & {:>20} & {:>20} & {:>20} \\\\'
     row_format = '{:>20} & {:.1f} & {:.1f} & {:.1f} & {:.1f} & {:.1f} & {:.1f} & {:.1f} & {:.1f} \\\\'
-    #print(top_row_format.format("", *attributes))
+    row_format_str = '{:>20} & {} & {} & {} & {} & {} & {} & {} & {} \\\\'
+
+    print(top_row_format.format("", *attributes))
+    print(row_format_str.format('epsilon', 'b-line', 'ours', 'b-line', 'ours',
+        'b-line', 'ours', 'b-line', 'ours'))
     for key in mean_table_ours.keys():
         row = list(np.concatenate(list(zip(mean_table_bline[key], mean_table_ours[key]))))
         print(row_format.format(key, *row))
