@@ -110,34 +110,31 @@ that we ONLY run the images through the filter in this evaluation.
 ## Produce main tables
 
 ### Table 1
-Table 1. The results of evaluating the adversarially trained classifiers on the
-held out test data censored with the baseline, only the generator, and our
-method.
+The results of evaluating the adversarially trained classifiers on the held out
+test data censored with the baseline, only the generator, and our method.
 
     python vis/create_filter_experiment_table.py
 
 (Output table is basically transposed w.r.t table in paper.)
 
 ### Table 2
-Table 2. The mean accuracy and standard deviation over five differ- ent random
-seeds when evaluating the fixed classifiers on the held out test data when
-censored with the baseline and our method, and FID score of the censored images.
+The mean accuracy and standard deviation over five different random seeds when
+evaluating the fixed classifiers on the held out test data when censored with
+the baseline and our method, and FID score of the censored images.
 
     python vis/create_fix_classifier_table.py
 
 ### Table 3
-
-Table 3. The success rate of our method to fool the fixed classifier that the
-synthetic sensitive attribute is in the censored image.
+The success rate of our method to fool the fixed classifier that the synthetic
+sensitive attribute is in the censored image.
 
     python vis/create_attributes_experiment_table.py
 
 ### Table 4
-
-Table 4. The value of each cell denotes the Pearson’s correlation coefficient
-between predictions from a fixed classifier trained to predict the row attribute
-and a fixed classifier trained to predict the column attribute, given that the
-column attribute has been censored.
+The value of each cell denotes the Pearson’s correlation coefficient between
+predictions from a fixed classifier trained to predict the row attribute and a
+fixed classifier trained to predict the column attribute, given that the column
+attribute has been censored.
 
     # need to run additional predictions
     python run_experiment.py --gpus 0 1 --experiment_name=attributes_experiment --mode=predict
