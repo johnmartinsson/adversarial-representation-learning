@@ -23,7 +23,7 @@ to run the experiments and produce results.
 	├── environment.yml			# anaconda environment file
 	├── loss_functions.py
 	├── models
-	│   ├── inception.py                  # used to compute FID
+	│   ├── inception.py                   # used to compute FID
 	│   ├── __init__.py
 	│   ├── unet.py				# UNet architecture definition
 	│   └── utils.py
