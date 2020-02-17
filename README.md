@@ -129,21 +129,21 @@ Table 1. The results of evaluating the adversarially trained classifiers on the
 held out test data censored with the baseline, only the generator, and our
 method.
 
-  python vis/create_filter_experiment_table.py
+    python vis/create_filter_experiment_table.py
 
 ### Table 2
 Table 2. The mean accuracy and standard deviation over five differ- ent random
 seeds when evaluating the fixed classifiers on the held out test data when
 censored with the baseline and our method, and FID score of the censored images.
 
-  python vis/create_fix_classifier_table.py
+    python vis/create_fix_classifier_table.py
 
 ### Table 3
 
 Table 3. The success rate of our method to fool the fixed classifier that the
 synthetic sensitive attribute is in the censored image.
 
-  python vis/create_attributes_experiment_table.py
+    python vis/create_attributes_experiment_table.py
 
 ### Table 4
 
@@ -152,14 +152,14 @@ between predictions from a fixed classifier trained to predict the row attribute
 and a fixed classifier trained to predict the column attribute, given that the
 column attribute has been censored.
 
-  python vis/create_correlation_table.py
+    python vis/create_correlation_table.py
 
 ### Not included in paper
 Adversarial results for all four attributes averaged over five random
 seeds. There is a consistent improvement with our method over the baseline for
 all attributes.
 
-	python vis/create_adversarial_table.p
+  	python vis/create_adversarial_table.p
 
 ## Inspect the loss-functions during training
 To visualize the loss-functions and validation functions during training
