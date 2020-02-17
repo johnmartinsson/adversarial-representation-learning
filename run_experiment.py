@@ -204,6 +204,7 @@ def main():
         'attributes_experiment' : attributes_experiment,
         'attributes_baseline_experiment' : attributes_baseline_experiment,
         'filter_experiment' : filter_experiment,
+        'filter_baseline_experiment' : filter_baseline_experiment,
     }
 
     gpu_busy = {}
