@@ -108,17 +108,6 @@ that we ONLY run the images through the filter in this evaluation.
     cp -r artifacts/filter_experiment artifacts/filter_baseline_experiment
     python run_experiment.py --gpus 0 1 --experiment_name=filter_baseline_experiment --mode=evaluate
 
-## Visualize the output of the models
-To visualize the output of the models run:
-
-    python run_experiment.py --gpus 0 1 --experiment_name=attributes_experiment --mode=visualize
-
-and check the 
-
-    artifacts/attributes_experiment/visualization
-
-folder for the images.
-
 ## Produce main tables
 
 ### Table 1
@@ -159,6 +148,18 @@ seeds. There is a consistent improvement with our method over the baseline for
 all attributes.
 
     python vis/create_adversarial_table.p
+
+## Visualize the output of the models
+To visualize the output of the models run:
+
+    python run_experiment.py --gpus 0 1 --experiment_name=attributes_experiment --mode=visualize
+
+and check the 
+
+    artifacts/attributes_experiment/visualization
+
+folder for the images.
+
 
 ## Inspect the loss-functions during training
 To visualize the loss-functions and validation functions during training
