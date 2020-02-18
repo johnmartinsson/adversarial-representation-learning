@@ -43,24 +43,19 @@ Install anaconda.
     conda activate pcgan
 
 ## Download data
-To download the data simply run the following commands:
+Download each of these files from the Google Drive:
+
+- [list_attr_celeba.txt](https://drive.google.com/open?id=0B7EVK8r0v71pblRyaVFSWGxPY0U),
+- [list_eval_partition.txt](https://drive.google.com/open?id=0B7EVK8r0v71pY0NSMzRuSXJEVkk),
+- [img_align_celeba.zip](https://drive.google.com/open?id=0B7EVK8r0v71pZjFTYXZWM3FlRnM),
+
+and put them in the folder './data'. 
 
     cd data
-    sh doit.sh
-
-We have noticed that the urls poitning to the Google Drive that hosts the data
-can exceeed their quota. If the script does not work it is probably due to
-this. Try downloading the files manually from the Google Drive or if that does not work the Baidu drive
-
-    cd data
-    download imgs_aligned.zip and unzip as imgs
-    download list_eval_partition.txt as data_split.txt
-    download list_attr_celeba.txt as annotations.txt
+    sh doit.sh # rename files and extracts zip
     python3 preprocess_annotations.py
     cd ..
     python3 data/preprocess_images.py
-
-all these files need to be in the folder './data' with the correct names before running the preprocessing script.
 
 You should now have
 
