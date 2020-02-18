@@ -47,7 +47,7 @@ Download each of these files from the Google Drive:
 
 - [list_attr_celeba.txt](https://drive.google.com/open?id=0B7EVK8r0v71pblRyaVFSWGxPY0U),
 - [list_eval_partition.txt](https://drive.google.com/open?id=0B7EVK8r0v71pY0NSMzRuSXJEVkk),
-- [imgs_aligned.zip](https://drive.google.com/open?id=0B7EVK8r0v71pZjFTYXZWM3FlRnM),
+- [img_align_celeba.zip](https://drive.google.com/open?id=0B7EVK8r0v71pZjFTYXZWM3FlRnM),
 
 and put them in the folder './data'. 
 
