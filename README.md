@@ -70,7 +70,9 @@ You should now have
     │   ├── celeba_images_valid_64x64.npy
     │   ├── celeba_images_test_64x64.npy
 
-in the data folder. Next run
+in the data folder. 
+
+Next run the sanity check
 
     python sanity_check.py
 
