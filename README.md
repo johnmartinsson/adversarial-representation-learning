@@ -50,7 +50,13 @@ To download the data simply run the following commands:
 
 We have noticed that the urls poitning to the Google Drive that hosts the data
 can exceeed their quota. If the script does not work it is probably due to
-this. Try downloading the files manually from the Google Drive or if that does not work the Baidu drive
+this. Try downloading the files manually from the Google Drive 
+
+- [annotations.txt](https://drive.google.com/open?id=0B7EVK8r0v71pblRyaVFSWGxPY0U)
+- [data_split.txt](https://drive.google.com/open?id=0B7EVK8r0v71pY0NSMzRuSXJEVkk)
+- [imgs_aligned.zip](https://drive.google.com/open?id=0B7EVK8r0v71pZjFTYXZWM3FlRnM)
+
+or if that does not work the Baidu drive.
 
     cd data
     download imgs_aligned.zip and unzip as imgs
