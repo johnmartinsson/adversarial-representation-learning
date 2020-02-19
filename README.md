@@ -13,10 +13,10 @@ to run the experiments and produce results.
     │           .
     ├── cgan.py
     ├── data
-    │   ├── doit.sh                         # data download script
-    │   ├── get_drive_file.py
+    │   ├── doit.sh                         # data rename / extraction script
     │   ├── __ini__.py
-    │   ├── preprocess_annotations.py
+    │   ├── preprocess_annotations.py       # create csv files for data splits
+    │   ├── preprocess_images.py            # create numpy files for images (trade space for speed)
     ├── datasets
     │   └── celeba.py                       # dataset definition
     ├── environment.yml                     # anaconda environment file
@@ -70,7 +70,9 @@ You should now have
     │   ├── celeba_images_valid_64x64.npy
     │   ├── celeba_images_test_64x64.npy
 
-in the data folder. Next run
+in the data folder. 
+
+Next run the sanity check
 
     python sanity_check.py
 
