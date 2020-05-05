@@ -22,12 +22,6 @@ def main():
                 main_gen_preds = np.argmax(main_gen_preds, axis=1)
 
             acc = np.mean(main_gen_preds == main_gen_secrets)
-            print(secret_attr, " : ", acc)
-
-            #for predicted_attr in predicted_attrs:
-            #    predict_path = 'predict_{}_64x64.pkl'.format(predicted_attr)
-            #    pkl_file_path = os.path.join(artifacts_dir, secret_attr +
-            #    '_eps_0.005', '0', predict_path)
 
             predict_path = 'predict_{}_64x64.pkl'.format(predicted_attr)
             pkl_file_path = os.path.join(artifacts_dir, secret_attr + '_eps_0.005', '0', predict_path)

@@ -32,7 +32,7 @@ def main():
             axarr[i,j].set_title("{}, {}".format(secret, utility))
             axarr[i,j].axis('off')
 
-    fig.suptitle("smiling, male")
+    fig.suptitle("[smiling, male]")
     plt.savefig("sanity_check.png")
 
 if __name__ == '__main__':
