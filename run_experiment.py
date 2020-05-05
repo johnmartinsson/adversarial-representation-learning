@@ -42,6 +42,31 @@ def train_classifiers(mode):
         stack.append((args, artifacts_dir))
     return stack
 
+def train_classifiers_224x224(mode):
+    secret_attributes = [
+        'Smiling',
+        'Male',
+    ]
+
+    stack = deque()
+
+    for attr in secret_attributes:
+        experiment_name = os.path.join('fixed_classifiers', attr)
+        artifacts_dir = os.path.join('artifacts', experiment_name)
+        args = [
+            'train_classifiers.py',
+            '--classifier_name', 'resnet18',
+            '--image_width', '224',
+            '--image_height', '224',
+            '--max_epochs', '20',
+            '--batch_size', '256',
+            '--experiment_name', experiment_name,
+            '--attr', attr,
+        ]
+        stack.append((args, artifacts_dir))
+    return stack
+
+
 def attributes_experiment(mode):
     secret_attributes = [
         'Smiling',
@@ -50,7 +75,8 @@ def attributes_experiment(mode):
         'Young'
     ]
 
-    epsilons = ['0.001', '0.005', '0.01', '0.05']
+    #epsilons = ['0.001', '0.005', '0.01', '0.05']
+    epsilons = ['0.02', '0.03']
 
     stack = deque()
 
@@ -168,6 +194,177 @@ def filter_baseline_experiment(mode):
 
     return stack
 
+
+def long_high_res_experiment(mode):
+    secret_attributes = [
+        'Smiling',
+    ]
+
+    epsilons = ['0.001']
+
+    stack = deque()
+
+    for i_run in range(0, 1):
+        for secret_attribute in secret_attributes:
+            for eps in epsilons:
+                artifacts_dir = os.path.join('artifacts', 'long_high_res_experiment', '{}_eps_{}'.format(secret_attribute, eps), str(i_run))
+
+                args = [
+                    'pcgan.py',
+                    '--artifacts_dir', artifacts_dir,
+                    '--discriminator_name', 'resnet_small_discriminator',
+                    '--secret_attr', secret_attribute,
+                    '--img_size', '224',
+                    '--use_real_fake', 'True',
+                    '--use_filter', 'True',
+                    '--use_cond', 'False',
+                    '--batch_size', '16',
+                    '--mode', mode,
+                    '--discriminator_update_interval', '3',
+                    '--n_epochs', '200',
+                    '--eps', eps,
+                ]
+                stack.append((args, artifacts_dir))
+
+    return stack
+
+def long_high_res_entropy_experiment(mode):
+    secret_attributes = [
+        'Smiling',
+    ]
+
+    epsilons = ['0.001']
+
+    stack = deque()
+
+    for i_run in range(0, 1):
+        for secret_attribute in secret_attributes:
+            for eps in epsilons:
+                artifacts_dir = os.path.join('artifacts', 'long_high_res_entropy_experiment', '{}_eps_{}'.format(secret_attribute, eps), str(i_run))
+
+                args = [
+                    'pcgan.py',
+                    '--artifacts_dir', artifacts_dir,
+                    '--discriminator_name', 'resnet_small_discriminator',
+                    '--secret_attr', secret_attribute,
+                    '--img_size', '224',
+                    '--use_real_fake', 'True',
+                    '--use_entropy_loss', 'True',
+                    '--use_filter', 'True',
+                    '--use_cond', 'False',
+                    '--batch_size', '16',
+                    '--mode', mode,
+                    '--discriminator_update_interval', '3',
+                    '--n_epochs', '200',
+                    '--eps', eps,
+                ]
+                stack.append((args, artifacts_dir))
+
+    return stack
+
+def long_high_res_no_generator_condition_experiment(mode):
+    secret_attributes = [
+        'Smiling',
+    ]
+
+    epsilons = ['0.001']
+
+    stack = deque()
+
+    for i_run in range(0, 1):
+        for secret_attribute in secret_attributes:
+            for eps in epsilons:
+                artifacts_dir = os.path.join('artifacts', 'long_high_res_no_generator_condition_experiment', '{}_eps_{}'.format(secret_attribute, eps), str(i_run))
+
+                args = [
+                    'pcgan.py',
+                    '--artifacts_dir', artifacts_dir,
+                    '--discriminator_name', 'resnet_small_discriminator',
+                    '--secret_attr', secret_attribute,
+                    '--img_size', '224',
+                    '--use_real_fake', 'True',
+                    '--use_filter', 'True',
+                    '--use_cond', 'False',
+                    '--use_generator_cond', 'False',
+                    '--batch_size', '16',
+                    '--mode', mode,
+                    '--discriminator_update_interval', '3',
+                    '--n_epochs', '200',
+                    '--eps', eps,
+                ]
+                stack.append((args, artifacts_dir))
+
+    return stack
+
+def attributes_medium_res_experiment(mode):
+    secret_attributes = [
+        'Smiling',
+        'Male',
+        #'Wearing_Lipstick',
+    ]
+
+    epsilons = ['0.001', '0.005', '0.01', '0.02', '0.03', '0.05']
+
+    stack = deque()
+
+    for i_run in range(0, 1):
+        for secret_attribute in secret_attributes:
+            for eps in epsilons:
+                artifacts_dir = os.path.join('artifacts', 'attributes_medium_res_experiment', '{}_eps_{}'.format(secret_attribute, eps), str(i_run))
+
+                args = [
+                    'pcgan.py',
+                    '--artifacts_dir', artifacts_dir,
+                    '--discriminator_name', 'resnet_small_discriminator',
+                    '--secret_attr', secret_attribute,
+                    '--img_size', '128',
+                    '--use_real_fake', 'True',
+                    '--use_filter', 'True',
+                    '--use_cond', 'False',
+                    '--batch_size', '48',
+                    '--mode', mode,
+                    '--discriminator_update_interval', '3',
+                    '--n_epochs', '100',
+                    '--eps', eps,
+                ]
+                stack.append((args, artifacts_dir))
+
+    return stack
+
+def medium_res_experiment(mode):
+    secret_attributes = [
+        'Smiling',
+    ]
+
+    epsilons = ['0.001']
+
+    stack = deque()
+
+    for i_run in range(0, 1):
+        for secret_attribute in secret_attributes:
+            for eps in epsilons:
+                artifacts_dir = os.path.join('artifacts', 'medium_res_experiment', '{}_eps_{}'.format(secret_attribute, eps), str(i_run))
+
+                args = [
+                    'pcgan.py',
+                    '--artifacts_dir', artifacts_dir,
+                    '--discriminator_name', 'resnet_small_discriminator',
+                    '--secret_attr', secret_attribute,
+                    '--img_size', '128',
+                    '--use_real_fake', 'True',
+                    '--use_filter', 'True',
+                    '--use_cond', 'False',
+                    '--batch_size', '64',
+                    '--mode', mode,
+                    '--discriminator_update_interval', '3',
+                    '--n_epochs', '100',
+                    '--eps', eps,
+                ]
+                print(" ".join(args))
+                stack.append((args, artifacts_dir))
+
+    return stack
+
 def spawn_experiment(args, gpu, artifacts_dir):
     """ Spawns a process which runs a pcgan.py experiment with the given
     arguments on the specified GPU and stores results to artifacts directory
@@ -185,6 +382,8 @@ def spawn_experiment(args, gpu, artifacts_dir):
     #print(args)
     my_env = os.environ.copy()
     my_env['CUDA_VISIBLE_DEVICES'] = gpu
+    #stdout = os.path.join(args.artifacts_dir, 'stdout.log')
+    #stderr = os.path.join(args.artifacts_dir, 'stderr.log')
     p = subprocess.Popen(['python'] + args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=my_env)
 
     return p
@@ -201,10 +400,16 @@ def main():
     # the predefined experiments
     experiment_stack_builders = {
         'train_classifiers' : train_classifiers,
+        'train_classifiers_224x224' : train_classifiers_224x224,
         'attributes_experiment' : attributes_experiment,
         'attributes_baseline_experiment' : attributes_baseline_experiment,
         'filter_experiment' : filter_experiment,
         'filter_baseline_experiment' : filter_baseline_experiment,
+        'medium_res_experiment' : medium_res_experiment,
+        'attributes_medium_res_experiment' : attributes_medium_res_experiment,
+        'long_high_res_experiment' : long_high_res_experiment,
+        'long_high_res_entropy_experiment' : long_high_res_entropy_experiment,
+        'long_high_res_no_generator_condition_experiment' : long_high_res_no_generator_condition_experiment,
     }
 
     gpu_busy = {}
@@ -353,7 +558,7 @@ def long_high_res_experiment(mode):
         'Smiling',
     ]
 
-    epsilons = ['0.001', '0.01']
+    epsilons = ['0.001'] #, '0.01']
 
     stack = deque()
 
@@ -367,10 +572,11 @@ def long_high_res_experiment(mode):
                     '--artifacts_dir', artifacts_dir,
                     '--discriminator_name', 'resnet_small_discriminator',
                     '--secret_attr', secret_attribute,
-                    '--img_size', '128',
+                    '--img_size', '224',
                     '--use_real_fake', 'True',
                     '--use_filter', 'True',
                     '--use_cond', 'False',
+                    '--batch_size', '16',
                     '--mode', mode,
                     '--discriminator_update_interval', '3',
                     '--n_epochs', '200',
