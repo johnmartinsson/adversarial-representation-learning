@@ -35,7 +35,7 @@ def main(hparams, writer):
 
     celeba_traindataset = celeba.CelebADataset(
             split='train',
-            in_memory=True, #True,
+            in_memory=False, #True,
             input_shape=input_shape,
             utility_attr='Male',
             secret_attr=hparams.attr,
@@ -45,7 +45,7 @@ def main(hparams, writer):
 
     celeba_validdataset = celeba.CelebADataset(
             split='valid',
-            in_memory=True,
+            in_memory=False,
             input_shape=input_shape,
             utility_attr='Male',
             secret_attr=hparams.attr,
@@ -71,7 +71,7 @@ def main(hparams, writer):
             optimizer.step()
 
         # VALIDATION
-        acc = 0
+        #acc = 0
         loss = 0
         for i, batch in enumerate(validloader, 0):
             images  = batch['image'].to(device)
@@ -81,22 +81,22 @@ def main(hparams, writer):
 
             s_loss = loss_function(pred, torch.squeeze(secret))
 
-            def accuracy(pred, true):
-                u   = true.cpu().numpy().flatten()
-                p   = np.argmax(pred.cpu().detach().numpy(), axis=1)
-                acc = np.sum(u == p)/len(u)
-
-                return acc
+#            def accuracy(pred, true):
+#                u   = true.cpu().numpy().flatten()
+#                p   = np.argmax(pred.cpu().detach().numpy(), axis=1)
+#                acc = np.sum(u == p)/len(u)
+#
+#                return acc
 
             loss += s_loss.item()
-            acc  += accuracy(pred, secret)
+#            acc  += accuracy(pred, secret)
 
         loss = loss / (i+1)
-        acc  = acc / (i+1)
+#        acc  = acc / (i+1)
 
-        print('Epoch: %d utility acc : %.3f' % (epoch + 1, acc))
+#        print('Epoch: %d utility acc : %.3f' % (epoch + 1, acc))
         print('Epoch: %d utility loss : %.3f' % (epoch + 1, loss))
-        writer.add_scalar('acc', acc, epoch)
+#        writer.add_scalar('acc', acc, epoch)
         writer.add_scalar('loss', loss, epoch)
 
         experiment_path = os.path.join('artifacts', hparams.experiment_name)
