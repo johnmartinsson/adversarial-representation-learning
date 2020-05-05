@@ -6,6 +6,7 @@ import math
 import scipy
 import json
 import pickle
+import time
 
 import torchvision.transforms as transforms
 from torchvision.utils import save_image
@@ -61,8 +62,12 @@ parser.add_argument("--log_interval", type=int, default=500, help="interval betw
 parser.add_argument("--discriminator_update_interval", type=int, default=1, help="how often to update discriminator")
 parser.add_argument("--name", type=str, default='default', help="experiment name")
 parser.add_argument("--use_real_fake", type=str2bool, nargs='?', const=True, default=False)
+parser.add_argument("--use_entropy_loss", type=str2bool, nargs='?', const=True, default=False)
 parser.add_argument("--use_filter", type=str2bool, nargs='?', const=True, default=True)
 parser.add_argument("--use_cond", type=str2bool, nargs='?', const=True, default=False)
+parser.add_argument("--use_generator_cond", type=str2bool, nargs='?', const=True, default=True)
+parser.add_argument("--freeze_filter", type=str2bool, nargs='?', const=True, default=False)
+parser.add_argument("--resume_training", type=str2bool, nargs='?', const=True, default=False)
 parser.add_argument("--mode", type=str, default='train')
 parser.add_argument("--discriminator_name", type=str, default='resnet_small_discriminator', help="name of discriminator")
 parser.add_argument("--artifacts_dir", type=str, default='default', help="directory to put artifacts in")
@@ -97,21 +102,32 @@ block_idx = InceptionV3.BLOCK_INDEX_BY_DIM[2048]
 inception_v3 = InceptionV3([block_idx])
 
 # Loss functions
+class HLoss(nn.Module):
+    def __init__(self):
+        super(HLoss, self).__init__()
+
+    def forward(self, x):
+        b = F.softmax(x, dim=1) * F.log_softmax(x, dim=1)
+        b = -1.0 * b.sum()
+        return b
+
 adversarial_loss = torch.nn.CrossEntropyLoss() #BCELoss()
+entropy_loss = HLoss()
 adversarial_rf_loss = torch.nn.CrossEntropyLoss()
 distortion_loss = torch.nn.MSELoss()
 
 # Initialize generator and discriminator
 
 filter = UNetFilter(3, 3, image_width=opt.img_size, image_height=opt.img_size, noise_dim=opt.latent_dim, activation='sigmoid', nb_classes=opt.n_classes, embedding_dim=opt.embedding_dim, use_cond=opt.use_cond)
-generator = UNetFilter(3, 3, image_width=opt.img_size, image_height=opt.img_size, noise_dim=opt.latent_dim, activation='sigmoid', nb_classes=opt.n_classes, embedding_dim=opt.embedding_dim)
+generator = UNetFilter(3, 3, image_width=opt.img_size, image_height=opt.img_size, noise_dim=opt.latent_dim, activation='sigmoid', nb_classes=opt.n_classes, embedding_dim=opt.embedding_dim, use_cond=opt.use_generator_cond)
 
 discriminator = utils.get_discriminator_model('resnet18', num_classes=2, pretrained=True, device=device)
 
+real_fake_classes = 3 if opt.use_generator_cond else 2
 if opt.discriminator_name == 'resnet18_discriminator':
-    discriminator_rf = utils.get_discriminator_model('resnet18', num_classes=3, pretrained=True, device=device)
+    discriminator_rf = utils.get_discriminator_model('resnet18', num_classes=real_fake_classes, pretrained=True, device=device)
 elif opt.discriminator_name == 'resnet_small_discriminator':
-    discriminator_rf = utils.get_discriminator_model('resnet_small', num_classes=3, pretrained=False, device=device)
+    discriminator_rf = utils.get_discriminator_model('resnet_small', num_classes=real_fake_classes, pretrained=False, device=device)
 else:
     raise ValueError("discriminator not defined: ", opt.discriminator_name)
 
@@ -138,7 +154,7 @@ if cuda:
 train_dataloader = torch.utils.data.DataLoader(
     celeba.CelebADataset(
         split='train',
-        in_memory=True,
+        in_memory=False,
         input_shape=(opt.img_size, opt.img_size),
         utility_attr=opt.utility_attr, #'Male',
         secret_attr=opt.secret_attr, #'Smiling',
@@ -155,7 +171,7 @@ if opt.mode == 'evaluate':
     valid_dataloader = torch.utils.data.DataLoader(
         celeba.CelebADataset(
             split='test',
-            in_memory=True,
+            in_memory=False,
             input_shape=(opt.img_size, opt.img_size),
             utility_attr=opt.utility_attr, #'Male',
             secret_attr=opt.secret_attr, #'Smiling',
@@ -170,7 +186,7 @@ else:
     valid_dataloader = torch.utils.data.DataLoader(
         celeba.CelebADataset(
             split='valid',
-            in_memory=True,
+            in_memory=False,
             input_shape=(opt.img_size, opt.img_size),
             utility_attr=opt.utility_attr, #'Male',
             secret_attr=opt.secret_attr, #'Smiling',
@@ -218,27 +234,31 @@ def train(i_epoch):
         #  Train Filter
         # -----------------
         if opt.use_filter:
-            optimizer_f.zero_grad()
+            if not opt.freeze_filter:
+                optimizer_f.zero_grad()
 
-            # sample noise as filter input
-            z = torch.randn(batch_size, opt.latent_dim).cuda()
+                # sample noise as filter input
+                z = torch.randn(batch_size, opt.latent_dim).cuda()
 
-            # filter a batch of images
-            filter_imgs = filter(imgs, z, secret.long())
-            pred_secret = discriminator(filter_imgs)
+                # filter a batch of images
+                filter_imgs = filter(imgs, z, secret.long())
+                pred_secret = discriminator(filter_imgs)
 
-            # loss measures filters's ability to fool the discriminator under constrained distortion
-            ones = Variable(FloatTensor(secret.shape).fill_(1.0), requires_grad=False)
-            target = ones-secret.float()
-            target = target.view(target.size(0)) #, -1)
-            f_adversary_loss = adversarial_loss(pred_secret, target.long())
-            f_distortion_loss = distortion_loss(filter_imgs, imgs)
+                # loss measures filters's ability to fool the discriminator under constrained distortion
+                ones = Variable(FloatTensor(secret.shape).fill_(1.0), requires_grad=False)
+                target = ones-secret.float()
+                target = target.view(target.size(0)) #, -1)
+                if not opt.use_entropy_loss:
+                    f_adversary_loss = adversarial_loss(pred_secret, target.long())
+                else:
+                    f_adversary_loss = -entropy_loss(pred_secret) # negative entropy
+                f_distortion_loss = distortion_loss(filter_imgs, imgs)
 
-            f_loss = f_adversary_loss + opt.lambd * torch.pow(torch.relu(f_distortion_loss-opt.eps), 2)
+                f_loss = f_adversary_loss + opt.lambd * torch.pow(torch.relu(f_distortion_loss-opt.eps), 2)
 
-            #if not opt.use_real_fake:
-            f_loss.backward()
-            optimizer_f.step()
+                #if not opt.use_real_fake:
+                f_loss.backward()
+                optimizer_f.step()
 
         # ------------------------
         # Train Generator (Real/Fake)
@@ -250,7 +270,12 @@ def train(i_epoch):
 
             # filter a batch of images
             if opt.use_filter:
-                filter_imgs = filter(imgs, z1, secret.long())
+                if not opt.freeze_filter:
+                    filter_imgs = filter(imgs, z1, secret.long())
+                else:
+                    with torch.no_grad():
+                        filter_imgs = filter(imgs, z1, secret.long())
+
             else:
                 filter_imgs = imgs
 
@@ -258,7 +283,10 @@ def train(i_epoch):
             z2 = torch.randn(batch_size, opt.latent_dim).cuda()
 
             # sample secret
-            gen_secret = Variable(LongTensor(np.random.choice([0.0, 1.0], batch_size)))
+            if opt.use_generator_cond:
+                gen_secret = Variable(LongTensor(np.random.choice([0.0, 1.0], batch_size)))
+            else:
+                gen_secret = Variable(LongTensor(np.random.choice([1.0], batch_size)))
 
             # generate a batch of images
             gen_imgs = generator(filter_imgs, z2, gen_secret)
@@ -278,13 +306,14 @@ def train(i_epoch):
         # ---------------------
 
         if opt.use_filter:
-            optimizer_d.zero_grad()
+            if not opt.freeze_filter:
+                optimizer_d.zero_grad()
 
-            pred_secret = discriminator(filter_imgs.detach())
-            d_loss = adversarial_loss(pred_secret, secret.long())
+                pred_secret = discriminator(filter_imgs.detach())
+                d_loss = adversarial_loss(pred_secret, secret.long())
 
-            d_loss.backward()
-            optimizer_d.step()
+                d_loss.backward()
+                optimizer_d.step()
 
         # --------------------------------
         #  Train Discriminator (Real/Fake)
@@ -294,13 +323,19 @@ def train(i_epoch):
             if opt.use_real_fake:
                 optimizer_d_rf.zero_grad()
 
-                c_imgs = torch.cat((imgs, gen_imgs.detach()), axis=1)
+                #c_imgs = torch.cat((imgs, gen_imgs.detach()), axis=1)
                 real_pred_secret = discriminator_rf(imgs)
                 fake_pred_secret = discriminator_rf(gen_imgs.detach())
 
-                fake_secret = Variable(LongTensor(fake_pred_secret.size(0)).fill_(2.0), requires_grad=False)
-                d_rf_loss_real = adversarial_rf_loss(real_pred_secret, secret.long())
-                d_rf_loss_fake = adversarial_rf_loss(fake_pred_secret, fake_secret)
+                if opt.use_generator_cond:
+                    fake_secret = Variable(LongTensor(fake_pred_secret.size(0)).fill_(2.0), requires_grad=False)
+                    d_rf_loss_real = adversarial_rf_loss(real_pred_secret, secret.long())
+                    d_rf_loss_fake = adversarial_rf_loss(fake_pred_secret, fake_secret)
+                else:
+                    fake_secret = Variable(LongTensor(fake_pred_secret.size(0)).fill_(0.0), requires_grad=False)
+                    real_secret = Variable(LongTensor(fake_pred_secret.size(0)).fill_(1.0), requires_grad=False)
+                    d_rf_loss_real = adversarial_rf_loss(real_pred_secret, real_secret)
+                    d_rf_loss_fake = adversarial_rf_loss(fake_pred_secret, fake_secret)
 
                 d_rf_loss = (d_rf_loss_real + d_rf_loss_fake) / 2
 
@@ -309,8 +344,9 @@ def train(i_epoch):
 
         if i_batch % opt.log_interval == 0:
             if opt.use_filter:
-                writer.add_scalar('loss/d_loss', d_loss.item(), i_batch + i_epoch*len(train_dataloader))
-                writer.add_scalar('loss/f_loss', f_loss.item(), i_batch + i_epoch*len(train_dataloader))
+                if not opt.freeze_filter:
+                    writer.add_scalar('loss/d_loss', d_loss.item(), i_batch + i_epoch*len(train_dataloader))
+                    writer.add_scalar('loss/f_loss', f_loss.item(), i_batch + i_epoch*len(train_dataloader))
             if opt.use_real_fake:
                 if i_batch % opt.discriminator_update_interval == 0:
                     writer.add_scalar('loss/d_rf_loss', d_rf_loss.item(), i_batch + i_epoch*len(train_dataloader))
@@ -615,7 +651,7 @@ def predict_images():
 
     dataset = celeba.CelebADataset(
         split='valid',
-        in_memory=True,
+        in_memory=False,
         input_shape=(opt.img_size, opt.img_size),
         utility_attr=opt.utility_attr, #'Male',
         secret_attr=opt.secret_attr, #'Smiling',
@@ -666,6 +702,15 @@ def predict_images():
 
 
 if opt.mode == 'train':
+    with open(os.path.join(artifacts_path, 'config.json'), 'w') as f:
+            json.dump(opt.__dict__, f, indent=2)
+
+    if opt.resume_training:
+        generator.load_state_dict(torch.load(os.path.join(artifacts_path, 'generator.hdf5')))
+        filter.load_state_dict(torch.load(os.path.join(artifacts_path, 'filter.hdf5')))
+        discriminator.load_state_dict(torch.load(os.path.join(artifacts_path, 'discriminator.hdf5')))
+        discriminator_rf.load_state_dict(torch.load(os.path.join(artifacts_path, 'discriminator_rf.hdf5')))
+
     for i_epoch in range(opt.n_epochs):
         # validate models
         secret_acc, secret_adv_acc, utility_acc, gen_secret_acc, fid, imgs, filter_imgs = validate()
@@ -683,8 +728,26 @@ if opt.mode == 'train':
         writer.add_scalar('valid/fid', fid, i_epoch)
         utils.save_images(imgs, filter_imgs, artifacts_path, i_epoch)
 
+        with open(os.path.join(artifacts_path, "training.log"), "a") as f:
+            print("---------------------------------------------------------\n", file = f)
+            print("- Epoch: {}\n".format(i_epoch), file = f)
+            print("---------------------------------------------------------\n", file = f)
+            print("secret_acc: {}\n".format(secret_acc), file = f)
+            print("secret_adv_acc: {}\n".format(secret_adv_acc), file = f)
+            print("gen_secret_acc: {}\n".format(gen_secret_acc), file = f)
+            print("utility_acc: {}\n".format(utility_acc), file = f)
+            print("fid: {}\n".format(fid), file = f)
+
+
         # train models
+        t1 = time.time()
         train(i_epoch)
+        t2 = time.time()
+
+        with open(os.path.join(artifacts_path, "training.log"), "a") as f:
+            print("minutes: {}\n".format((t2-t1)/60.0), file = f)
+            print("\n", file = f)
+            print("\n", file = f)
 
         # save models
         utils.save_model(filter, os.path.join(artifacts_path, "filter.hdf5"))
