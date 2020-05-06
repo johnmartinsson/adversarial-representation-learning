@@ -2,6 +2,7 @@ import tqdm
 import sys
 import numpy as np
 import os
+import glob
 
 import wave
 import librosa
@@ -11,25 +12,11 @@ import skimage.filters as filters
 from skimage import morphology
 
 def create_basename(filepath):
-    basename = '_'.join(filepath.split(os.extsep)[0].split('/')[-3:])
+    basename = filepath.split(os.extsep)[0].split('/')[-1]
     return basename
 
 def write_wave_to_file(filename, rate, wave):
     wavfile.write(filename, rate, wave)
-
-def read_wave_file(filename):
-    """ Read a wave file from disk
-    # Arguments
-        filename : the name of the wave file
-    # Returns
-        (y, sr)  : (wave, sampling rate)
-    """
-    if (not os.path.isfile(filename)):
-        raise ValueError("File does not exist")
-
-    y, sr = librosa.load(filename)
-
-    return y, sr
 
 def preprocess_sound_file(filename, output_dir, segment_size_seconds):
     """ Preprocess sound file. Loads sound file from filename and
@@ -43,7 +30,8 @@ def preprocess_sound_file(filename, output_dir, segment_size_seconds):
         nothing, simply saves the preprocessed sound segments
     """
 
-    wave, samplerate = read_wave_file(filename)
+    # need to explicitly tell librosa NOT to resmaple ...
+    wave, samplerate = librosa.load(filename, sr=None)
 
     if len(wave) == 0:
         raise ValueError("An empty sound file ...")
@@ -88,9 +76,12 @@ def split_into_segments(wave, samplerate, segment_time):
     return segments
 
 def main():
-    files = librosa.util.find_files(sys.argv[1])
+    in_dir = sys.argv[1]
+    out_dir = sys.argv[2]
+
+    files = glob.glob(os.path.join(in_dir, '*.wav'))
     for i in tqdm.tqdm(range(len(files))):
-        preprocess_sound_file(files[i], sys.argv[2], 2, 8000)
+        preprocess_sound_file(files[i], out_dir, 2)
 
 if __name__ == '__main__':
     main()
