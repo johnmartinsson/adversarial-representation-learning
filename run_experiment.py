@@ -331,6 +331,43 @@ def attributes_medium_res_experiment(mode):
 
     return stack
 
+def attributes_medium_res_baseline_experiment(mode):
+    secret_attributes = [
+        'Smiling',
+        'Male',
+        #'Wearing_Lipstick',
+    ]
+
+    epsilons = ['0.001', '0.005', '0.01', '0.02', '0.03', '0.05']
+
+    stack = deque()
+
+    for i_run in range(0, 1):
+        for secret_attribute in secret_attributes:
+            for eps in epsilons:
+                artifacts_dir = os.path.join('artifacts', 'attributes_medium_res_baseline_experiment', '{}_eps_{}'.format(secret_attribute, eps), str(i_run))
+
+                args = [
+                    'pcgan.py',
+                    '--artifacts_dir', artifacts_dir,
+                    '--discriminator_name', 'resnet_small_discriminator',
+                    '--secret_attr', secret_attribute,
+                    '--img_size', '128',
+                    '--use_real_fake', 'False',
+                    '--use_filter', 'True',
+                    '--use_cond', 'False',
+                    '--batch_size', '48',
+                    '--mode', mode,
+                    '--discriminator_update_interval', '3',
+                    '--n_epochs', '100',
+                    '--eps', eps,
+                ]
+                stack.append((args, artifacts_dir))
+
+    return stack
+
+
+
 def medium_res_experiment(mode):
     secret_attributes = [
         'Smiling',
@@ -407,6 +444,7 @@ def main():
         'filter_baseline_experiment' : filter_baseline_experiment,
         'medium_res_experiment' : medium_res_experiment,
         'attributes_medium_res_experiment' : attributes_medium_res_experiment,
+        'attributes_medium_res_baseline_experiment' : attributes_medium_res_baseline_experiment,
         'long_high_res_experiment' : long_high_res_experiment,
         'long_high_res_entropy_experiment' : long_high_res_entropy_experiment,
         'long_high_res_no_generator_condition_experiment' : long_high_res_no_generator_condition_experiment,
