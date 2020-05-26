@@ -167,7 +167,7 @@ train_dataloader = torch.utils.data.DataLoader(
     pin_memory=False,
 )
 
-if opt.mode == 'evaluate':
+if opt.mode == 'evaluate' or opt.mode == 'predict':
     valid_dataloader = torch.utils.data.DataLoader(
         celeba.CelebADataset(
             split='test',
@@ -504,12 +504,14 @@ def visualize():
 
     return
 
+# TODO: check this code. The concatenation may be wrong!
 def predict(attr):
     """ Makes predictions for original images and censored images and stores
     the results. """
 
     preds       = np.zeros((len(valid_dataloader), 2))
     gen_preds   = np.zeros((len(valid_dataloader), 2))
+    filter_preds = np.zeros((len(valid_dataloader), 2))
     secrets     = np.zeros((len(valid_dataloader), 1))
     gen_secrets = np.zeros((len(valid_dataloader)))
 
@@ -551,6 +553,96 @@ def predict(attr):
     file_name = "predict_{}_{}x{}.pkl".format(attr, opt.img_size, opt.img_size)
     with open(os.path.join(opt.artifacts_dir, file_name), 'wb') as f:
         pickle.dump((preds, gen_preds, secrets, gen_secrets), f, pickle.HIGHEST_PROTOCOL)
+
+def predict_utility(attrs):
+    for attr in attrs: # loop over utility attributes
+        if not attr == opt.secret_attr:
+            # load data
+            test_dataloader = torch.utils.data.DataLoader(
+                celeba.CelebADataset(
+                    split='test',
+                    in_memory=False,
+                    input_shape=(opt.img_size, opt.img_size),
+                    utility_attr=attr,
+                    secret_attr=opt.secret_attr,
+                    transform=transforms.Compose([
+                        celeba.ToTensor(),
+                ])),
+                batch_size=opt.batch_size,
+                num_workers=opt.n_workers,
+                pin_memory=False,
+            )
+
+            # load utility classifier
+            utility_classifier = utils.get_discriminator_model('resnet18', num_classes=2, pretrained=False, device=device, weights_path='./artifacts/fixed_classifiers/{}/classifier_{}x{}.h5'.format(attr, opt.img_size, opt.img_size))
+
+            # set eval mode
+            utility_classifier.eval()
+            generator.eval()
+            filter.eval()
+
+            if cuda:
+                utility_classifier.cuda()
+
+            # original utility attribute in image
+            trues = []
+            # predicted utility attribute in image
+            ours_preds = []
+            bline_preds = []
+
+            bline_accs = []
+            ours_accs = []
+
+            # run data through privatization method
+            for i_batch, batch in tqdm.tqdm(enumerate(test_dataloader, 0)):
+                imgs    = batch['image'].cuda()
+                utility = batch['utility'].float().cuda()
+
+                batch_size  = imgs.shape[0]
+                z1 = torch.randn(batch_size, opt.latent_dim).cuda()
+                z2 = torch.randn(batch_size, opt.latent_dim).cuda()
+
+                filter_imgs = filter(imgs, z1, utility.long())
+
+                gen_secret = Variable(LongTensor(np.random.choice([0.0, 1.0], batch_size)))
+                gen_imgs   = generator(filter_imgs, z2, gen_secret)
+
+                # evaluate utility on baseline
+                bline_pred  = utility_classifier(filter_imgs)
+                bline_preds.append(bline_pred.detach().cpu().numpy())
+
+                # evaluate utility on ours
+                ours_pred  = utility_classifier(gen_imgs)
+                ours_preds.append(ours_pred.detach().cpu().numpy())
+
+                # Trues
+                trues.append(utility.detach().cpu().numpy())
+
+            # concatenate results
+            bline_preds = np.concatenate(bline_preds)
+            ours_preds = np.concatenate(ours_preds)
+            trues = np.concatenate(trues)
+
+            # save results
+            np.save(os.path.join(opt.artifacts_dir, "{}_ours_preds.npy".format(attr)), ours_preds)
+            np.save(os.path.join(opt.artifacts_dir, "{}_bline_preds.npy".format(attr)), bline_preds)
+            np.save(os.path.join(opt.artifacts_dir, "{}_trues.npy".format(attr)), trues)
+
+            bline_acc = np.mean(np.argmax(bline_preds, axis=1) == np.squeeze(trues))
+            ours_acc  = np.mean(np.argmax(ours_preds, axis=1) == np.squeeze(trues))
+
+            print("Baseline, {}: {}".format(attr, bline_acc))
+            print("ours,     {}: {}".format(attr, ours_acc))
+
+            bline_accs.append(bline_acc)
+            ours_accs.append(ours_acc)
+
+    bline_mean_utility_acc = np.mean(np.array(bline_accs))
+    ours_mean_utility_acc  = np.mean(np.array(ours_accs))
+    print("Baseline mean acc: {}".format(bline_mean_utility_acc))
+    print("ours     mean acc: {}".format(ours_mean_utility_acc))
+    np.save(os.path.join(opt.artifacts_dir, "bline_mean_utility_acc.npy"), bline_mean_utility_acc)
+    np.save(os.path.join(opt.artifacts_dir, "ours_mean_utility_acc.npy"), ours_mean_utility_acc)
 
 def train_adversary():
     """ Trains an adversary on data from the data censoring process. """
@@ -774,6 +866,12 @@ elif opt.mode == 'evaluate':
     }
     with open(os.path.join(artifacts_path, "results.json"), "w") as f:
         json.dump(results, f, indent=2)
+elif opt.mode == 'predict_utility':
+    filter.load_state_dict(torch.load(os.path.join(artifacts_path, 'filter.hdf5')))
+    generator.load_state_dict(torch.load(os.path.join(artifacts_path, 'generator.hdf5')))
+    attrs = ['Smiling', 'Male', 'Wearing_Lipstick', 'Young', 'High_Cheekbones', 'Mouth_Slightly_Open', 'Heavy_Makeup']
+    predict_utility(attrs)
+
 elif opt.mode == 'predict':
     filter.load_state_dict(torch.load(os.path.join(artifacts_path, 'filter.hdf5')))
     generator.load_state_dict(torch.load(os.path.join(artifacts_path, 'generator.hdf5')))

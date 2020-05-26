@@ -10,18 +10,18 @@ from collections import deque
 
 def train_classifiers(mode):
     secret_attributes = [
-        'Smiling',
-        'Attractive',
-        'Young',
-        'Male',
-        'Wearing_Lipstick',
-        'Wavy_Hair',
-        'Heavy_Makeup',
-        'Pointy_Nose',
-        'High_Cheekbones',
-        'Mouth_Slightly_Open',
-        'Rosy_Cheeks',
-        'Oval_Face'
+        #'Smiling',
+        #'Attractive',
+        #'Young',
+        #'Male',
+        #'Wearing_Lipstick',
+        #'Wavy_Hair',
+        #'Heavy_Makeup',
+        #'Pointy_Nose',
+        #'High_Cheekbones',
+        #'Mouth_Slightly_Open',
+        #'Rosy_Cheeks',
+        #'Oval_Face'
     ]
 
     stack = deque()
@@ -66,6 +66,79 @@ def train_classifiers_224x224(mode):
         stack.append((args, artifacts_dir))
     return stack
 
+def attributes_entropy_experiment(mode):
+    secret_attributes = [
+        'Smiling',
+        'Male',
+        #'Wearing_Lipstick',
+        #'Young'
+    ]
+
+    epsilons = ['0.001', '0.005', '0.01', '0.02', '0.03', '0.05']
+
+    stack = deque()
+
+    for i_run in range(0, 2):
+        for secret_attribute in secret_attributes:
+            for eps in epsilons:
+                artifacts_dir = os.path.join('/raid/john/gits/adversarial-representation-learning/artifacts', 'attributes_entropy_experiment', '{}_eps_{}'.format(secret_attribute, eps), str(i_run))
+
+                args = [
+                    'pcgan.py',
+                    '--artifacts_dir', artifacts_dir,
+                    '--discriminator_name', 'resnet_small_discriminator',
+                    '--secret_attr', secret_attribute,
+                    '--img_size', '64',
+                    '--use_entropy_loss', 'True',
+                    '--use_real_fake', 'True',
+                    '--use_filter', 'True',
+                    '--use_cond', 'False',
+                    '--mode', mode,
+                    '--discriminator_update_interval', '3',
+                    '--n_epochs', '100',
+                    '--eps', eps,
+                ]
+                stack.append((args, artifacts_dir))
+
+    return stack
+
+def attributes_entropy_baseline_experiment(mode):
+    secret_attributes = [
+        'Smiling',
+        'Male',
+        #'Wearing_Lipstick',
+        #'Young'
+    ]
+
+    epsilons = ['0.001', '0.005', '0.01', '0.02', '0.03', '0.05']
+
+    stack = deque()
+
+    for i_run in range(0, 2):
+        for secret_attribute in secret_attributes:
+            for eps in epsilons:
+                artifacts_dir = os.path.join('/raid/john/gits/adversarial-representation-learning/artifacts', 'attributes_entropy_baseline_experiment', '{}_eps_{}'.format(secret_attribute, eps), str(i_run))
+
+                args = [
+                    'pcgan.py',
+                    '--artifacts_dir', artifacts_dir,
+                    '--discriminator_name', 'resnet_small_discriminator',
+                    '--secret_attr', secret_attribute,
+                    '--img_size', '64',
+                    '--use_entropy_loss', 'True',
+                    '--use_real_fake', 'False',
+                    '--use_filter', 'True',
+                    '--use_cond', 'False',
+                    '--mode', mode,
+                    '--discriminator_update_interval', '3',
+                    '--n_epochs', '100',
+                    '--eps', eps,
+                ]
+                stack.append((args, artifacts_dir))
+
+    return stack
+
+
 
 def attributes_experiment(mode):
     secret_attributes = [
@@ -75,7 +148,7 @@ def attributes_experiment(mode):
         'Young'
     ]
 
-    #epsilons = ['0.001', '0.005', '0.01', '0.05']
+    #epsilons = ['0.001', '0.005', '0.01', '0.02', '0.03', '0.05']
     epsilons = ['0.02', '0.03']
 
     stack = deque()
@@ -83,7 +156,7 @@ def attributes_experiment(mode):
     for i_run in range(0, 5):
         for secret_attribute in secret_attributes:
             for eps in epsilons:
-                artifacts_dir = os.path.join('artifacts', 'attributes_experiment', '{}_eps_{}'.format(secret_attribute, eps), str(i_run))
+                artifacts_dir = os.path.join('/raid/john/gits/adversarial-representation-learning/artifacts', 'attributes_experiment', '{}_eps_{}'.format(secret_attribute, eps), str(i_run))
 
                 args = [
                     'pcgan.py',
@@ -111,14 +184,15 @@ def attributes_baseline_experiment(mode):
         'Young'
     ]
 
-    epsilons = ['0.001', '0.005', '0.01', '0.05']
+    epsilons = ['0.001', '0.005', '0.01', '0.02', '0.03', '0.05']
+    #epsilons = ['0.02', '0.03']
 
     stack = deque()
 
     for i_run in range(0, 5):
         for secret_attribute in secret_attributes:
             for eps in epsilons:
-                artifacts_dir = os.path.join('artifacts', 'attributes_baseline_experiment', '{}_eps_{}'.format(secret_attribute, eps), str(i_run))
+                artifacts_dir = os.path.join('/raid/john/gits/adversarial-representation-learning/artifacts', 'attributes_baseline_experiment', '{}_eps_{}'.format(secret_attribute, eps), str(i_run))
 
                 args = [
                     'pcgan.py',
@@ -440,6 +514,8 @@ def main():
         'train_classifiers_224x224' : train_classifiers_224x224,
         'attributes_experiment' : attributes_experiment,
         'attributes_baseline_experiment' : attributes_baseline_experiment,
+        'attributes_entropy_experiment' : attributes_entropy_experiment,
+        'attributes_entropy_baseline_experiment' : attributes_entropy_baseline_experiment,
         'filter_experiment' : filter_experiment,
         'filter_baseline_experiment' : filter_baseline_experiment,
         'medium_res_experiment' : medium_res_experiment,
