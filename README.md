@@ -86,12 +86,14 @@ the experiments will run on GPU 0 and GPU 1.
 
     python run_experiment.py --gpus 0 1 --experiment_name=train_classifiers --mode=train
     python run_experiment.py --gpus 0 1 --experiment_name=attributes_experiment --mode=train
+    python run_experiment.py --gpus 0 1 --experiment_name=attributes_entropy_experiment --mode=train
     python run_experiment.py --gpus 0 1 --experiment_name=filter_experiment --mode=train
 
 ## Evaluate the models
 To evaluate the main method experiment:
 
     python run_experiment.py --gpus 0 1 --experiment_name=attributes_experiment --mode=evaluate
+    python run_experiment.py --gpus 0 1 --experiment_name=attributes_entropy_experiment --mode=evaluate
     python run_experiment.py --gpus 0 1 --experiment_name=filter_experiment --mode=evaluate
 
 To evaluate the baseline. Since the update of the filter model is independent
@@ -101,33 +103,26 @@ that we ONLY run the images through the filter in this evaluation.
 
     cp -r artifacts/attributes_experiment artifacts/attributes_baseline_experiment
     python run_experiment.py --gpus 0 1 --experiment_name=attributes_baseline_experiment --mode=evaluate
+    cp -r artifacts/attributes_entropy_experiment artifacts/attributes_entropy_baseline_experiment
+    python run_experiment.py --gpus 0 1 --experiment_name=attributes_entropy_baseline_experiment --mode=evaluate
     cp -r artifacts/filter_experiment artifacts/filter_baseline_experiment
     python run_experiment.py --gpus 0 1 --experiment_name=filter_baseline_experiment --mode=evaluate
+## Produce main figure
+
+### Figure 1
+The trade-off between utility score and privacy loss for different distortion budgets. This will create the four plots seen in Figure 1 in the paper saved as pdfs in the working directory.
+
+    python vis/privacy_vs_utility_plot.py
 
 ## Produce main tables
 
 ### Table 1
-The results of evaluating the adversarially trained classifiers on the held out
-test data censored with the baseline, only the generator, and our method.
-
-    python vis/create_filter_experiment_table.py
-
-(Output table is basically transposed w.r.t table in paper.)
-
-### Table 2
-The mean accuracy and standard deviation over five different random seeds when
-evaluating the fixed classifiers on the held out test data when censored with
-the baseline and our method, and FID score of the censored images.
-
-    python vis/create_fix_classifier_table.py
-
-### Table 3
 The success rate of our method to fool the fixed classifier that the synthetic
 sensitive attribute is in the censored image.
 
     python vis/create_attributes_experiment_table.py
 
-### Table 4
+### Table 2
 The value of each cell denotes the Pearson’s correlation coefficient between
 predictions from a fixed classifier trained to predict the row attribute and a
 fixed classifier trained to predict the column attribute, given that the column
@@ -138,12 +133,14 @@ attribute has been censored.
     # create table
     python vis/create_correlation_table.py
 
-### Not included in paper
-Adversarial results for all four attributes averaged over five random
-seeds. There is a consistent improvement with our method over the baseline for
-all attributes.
+### Table 3
+The results of evaluating the adversarially trained classifiers on the held out
+test data censored with the baseline, only the generator, and our method.
 
-    python vis/create_adversarial_table.p
+    python vis/create_filter_experiment_table.py
+
+(Output table is basically transposed w.r.t table in paper.)
+
 
 ## Visualize the output of the models
 To visualize the output of the models run:
