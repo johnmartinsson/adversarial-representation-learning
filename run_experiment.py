@@ -81,7 +81,7 @@ def attributes_entropy_experiment(mode):
     for i_run in range(0, 2):
         for secret_attribute in secret_attributes:
             for eps in epsilons:
-                artifacts_dir = os.path.join('/raid/john/gits/adversarial-representation-learning/artifacts', 'attributes_entropy_experiment', '{}_eps_{}'.format(secret_attribute, eps), str(i_run))
+                artifacts_dir = os.path.join('artifacts', 'attributes_entropy_experiment', '{}_eps_{}'.format(secret_attribute, eps), str(i_run))
 
                 args = [
                     'pcgan.py',
@@ -117,7 +117,7 @@ def attributes_entropy_baseline_experiment(mode):
     for i_run in range(0, 2):
         for secret_attribute in secret_attributes:
             for eps in epsilons:
-                artifacts_dir = os.path.join('/raid/john/gits/adversarial-representation-learning/artifacts', 'attributes_entropy_baseline_experiment', '{}_eps_{}'.format(secret_attribute, eps), str(i_run))
+                artifacts_dir = os.path.join('artifacts', 'attributes_entropy_baseline_experiment', '{}_eps_{}'.format(secret_attribute, eps), str(i_run))
 
                 args = [
                     'pcgan.py',
@@ -156,7 +156,7 @@ def attributes_experiment(mode):
     for i_run in range(0, 5):
         for secret_attribute in secret_attributes:
             for eps in epsilons:
-                artifacts_dir = os.path.join('/raid/john/gits/adversarial-representation-learning/artifacts', 'attributes_experiment', '{}_eps_{}'.format(secret_attribute, eps), str(i_run))
+                artifacts_dir = os.path.join('artifacts', 'attributes_experiment', '{}_eps_{}'.format(secret_attribute, eps), str(i_run))
 
                 args = [
                     'pcgan.py',
@@ -192,7 +192,7 @@ def attributes_baseline_experiment(mode):
     for i_run in range(0, 5):
         for secret_attribute in secret_attributes:
             for eps in epsilons:
-                artifacts_dir = os.path.join('/raid/john/gits/adversarial-representation-learning/artifacts', 'attributes_baseline_experiment', '{}_eps_{}'.format(secret_attribute, eps), str(i_run))
+                artifacts_dir = os.path.join('artifacts', 'attributes_baseline_experiment', '{}_eps_{}'.format(secret_attribute, eps), str(i_run))
 
                 args = [
                     'pcgan.py',
