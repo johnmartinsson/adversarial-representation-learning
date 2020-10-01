@@ -8,6 +8,76 @@ from collections import deque
 # Important experiments / training for paper results
 ###############################################################################
 
+def demo_experiment(mode):
+    secret_attributes = [
+        'Smiling',
+    ]
+
+    epsilons = ['0.001', '0.01', '0.02', '0.03']
+    use_entropy_loss = ['False', 'True']
+
+    stack = deque()
+
+    for i_run in range(0, 1):
+        for secret_attribute in secret_attributes:
+            for eps in epsilons:
+                for use_entropy in use_entropy_loss:
+                    artifacts_dir = os.path.join('artifacts', 'demo_experiment', '{}_eps_{}_entropy_{}'.format(secret_attribute, eps, use_entropy), str(i_run))
+
+                    args = [
+                        'pcgan.py',
+                        '--artifacts_dir', artifacts_dir,
+                        '--discriminator_name', 'resnet_small_discriminator',
+                        '--secret_attr', secret_attribute,
+                        '--img_size', '64',
+                        '--use_entropy_loss', use_entropy,
+                        '--use_real_fake', 'True',
+                        '--use_filter', 'True',
+                        '--use_cond', 'False',
+                        '--mode', mode,
+                        '--discriminator_update_interval', '3',
+                        '--n_epochs', '50',
+                        '--eps', eps,
+                    ]
+                    stack.append((args, artifacts_dir))
+
+    return stack
+
+def demo_experiment_baseline(mode):
+    secret_attributes = [
+        'Smiling',
+    ]
+
+    epsilons = ['0.001', '0.01', '0.02', '0.03']
+    use_entropy_loss = ['False', 'True']
+
+    stack = deque()
+
+    for i_run in range(0, 1):
+        for secret_attribute in secret_attributes:
+            for eps in epsilons:
+                for use_entropy in use_entropy_loss:
+                    artifacts_dir = os.path.join('artifacts', 'demo_experiment_baseline', '{}_eps_{}_entropy_{}'.format(secret_attribute, eps, use_entropy), str(i_run))
+
+                    args = [
+                        'pcgan.py',
+                        '--artifacts_dir', artifacts_dir,
+                        '--discriminator_name', 'resnet_small_discriminator',
+                        '--secret_attr', secret_attribute,
+                        '--img_size', '64',
+                        '--use_entropy_loss', use_entropy,
+                        '--use_real_fake', 'False',
+                        '--use_filter', 'True',
+                        '--use_cond', 'False',
+                        '--mode', mode,
+                        '--discriminator_update_interval', '3',
+                        '--n_epochs', '50',
+                        '--eps', eps,
+                    ]
+                    stack.append((args, artifacts_dir))
+
+    return stack
+
 def train_classifiers(mode):
     secret_attributes = [
         #'Smiling',
