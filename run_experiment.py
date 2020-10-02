@@ -36,14 +36,14 @@ def demo_experiment(mode):
                         '--use_cond', 'False',
                         '--mode', mode,
                         '--discriminator_update_interval', '3',
-                        '--n_epochs', '50',
+                        '--n_epochs', '100',
                         '--eps', eps,
                     ]
                     stack.append((args, artifacts_dir))
 
     return stack
 
-def demo_experiment_baseline(mode):
+def demo_baseline_experiment(mode):
     secret_attributes = [
         'Smiling',
     ]
@@ -57,7 +57,7 @@ def demo_experiment_baseline(mode):
         for secret_attribute in secret_attributes:
             for eps in epsilons:
                 for use_entropy in use_entropy_loss:
-                    artifacts_dir = os.path.join('artifacts', 'demo_experiment_baseline', '{}_eps_{}_entropy_{}'.format(secret_attribute, eps, use_entropy), str(i_run))
+                    artifacts_dir = os.path.join('artifacts', 'demo_baseline_experiment', '{}_eps_{}_entropy_{}'.format(secret_attribute, eps, use_entropy), str(i_run))
 
                     args = [
                         'pcgan.py',
@@ -71,7 +71,7 @@ def demo_experiment_baseline(mode):
                         '--use_cond', 'False',
                         '--mode', mode,
                         '--discriminator_update_interval', '3',
-                        '--n_epochs', '50',
+                        '--n_epochs', '100',
                         '--eps', eps,
                     ]
                     stack.append((args, artifacts_dir))
@@ -565,6 +565,7 @@ def spawn_experiment(args, gpu, artifacts_dir):
     my_env['CUDA_VISIBLE_DEVICES'] = gpu
     #stdout = os.path.join(args.artifacts_dir, 'stdout.log')
     #stderr = os.path.join(args.artifacts_dir, 'stderr.log')
+    print(args)
     p = subprocess.Popen(['python'] + args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=my_env)
 
     return p
@@ -586,6 +587,8 @@ def main():
         'attributes_baseline_experiment' : attributes_baseline_experiment,
         'attributes_entropy_experiment' : attributes_entropy_experiment,
         'attributes_entropy_baseline_experiment' : attributes_entropy_baseline_experiment,
+        'demo_experiment' : demo_experiment,
+        'demo_baseline_experiment' : demo_baseline_experiment,
         'filter_experiment' : filter_experiment,
         'filter_baseline_experiment' : filter_baseline_experiment,
         'medium_res_experiment' : medium_res_experiment,
