@@ -78,17 +78,17 @@ data is loaded properly.
 Run a short experiment to produce a trade-off curve plot for the __smiling__ attribute with an average over __one__ run. Remember, evaluation requires training of an adversary to predict the sensitive attribute for each configuration, and can take some time.
 
     # train the fixed classifiers
-    python run_experiment.py --gpus 0 --experiment_name=train_classifiers --mode=train
+    python run_experiment.py --gpus 0 1 --experiment_name=train_classifiers --mode=train
 
     # train and evaluate models
-    python run_experiment.py --gpus 0 --experiment_name=demo_experiment --mode=train
-    python run_experiment.py --gpus 0 --experiment_name=demo_experiment --mode=evaluate
-    python run_experiment.py --gpus 0 --experiment_name=demo_experiment --mode=predict_utility
+    python run_experiment.py --gpus 0 1 --experiment_name=demo_experiment --mode=train
+    python run_experiment.py --gpus 0 1 --experiment_name=demo_experiment --mode=evaluate
+    python run_experiment.py --gpus 0 1 --experiment_name=demo_experiment --mode=predict_utility
     
     # evaluate model and only run images through the filter
     cp -r artifacts/demo_experiment/ artifacts/demo_baseline_experiment/
-    python run_experiment.py --gpus 0 --experiment_name=demo_baseline_experiment --mode=evaluate
-    python run_experiment.py --gpus 0 --experiment_name=demo_baseline_experiment --mode=predict_utility
+    python run_experiment.py --gpus 0 1 --experiment_name=demo_baseline_experiment --mode=evaluate
+    python run_experiment.py --gpus 0 1 --experiment_name=demo_baseline_experiment --mode=predict_utility
 
     # create trade-off curve
     python vis/privacy_vs_utility_demo_plot.py
