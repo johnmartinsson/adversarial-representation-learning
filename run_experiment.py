@@ -80,18 +80,13 @@ def demo_baseline_experiment(mode):
 
 def train_classifiers(mode):
     secret_attributes = [
-        #'Smiling',
-        #'Attractive',
-        #'Young',
-        #'Male',
-        #'Wearing_Lipstick',
-        #'Wavy_Hair',
-        #'Heavy_Makeup',
-        #'Pointy_Nose',
-        #'High_Cheekbones',
-        #'Mouth_Slightly_Open',
-        #'Rosy_Cheeks',
-        #'Oval_Face'
+        'Smiling',
+        'Young',
+        'Male',
+        'Wearing_Lipstick',
+        'Heavy_Makeup',
+        'High_Cheekbones',
+        'Mouth_Slightly_Open',
     ]
 
     stack = deque()
