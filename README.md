@@ -54,8 +54,6 @@ and put them in the folder './data'.
     cd data
     sh doit.sh # rename files and extracts zip
     python3 preprocess_annotations.py
-    cd ..
-    python3 data/preprocess_images.py
 
 You should now have
 
@@ -66,9 +64,6 @@ You should now have
     │   ├── training_annotations.txt  # annotations
     │   ├── validation_annotations.txt
     │   ├── test_annotations.txt
-    │   ├── celeba_images_train_64x64.npy   # images in numpy format
-    │   ├── celeba_images_valid_64x64.npy
-    │   ├── celeba_images_test_64x64.npy
 
 in the data folder. 
 
@@ -79,6 +74,24 @@ Next run the sanity check
 and open the resulting 'sanity_check.png' image to convince yourself that the
 data is loaded properly.
 
+## Demo experiment
+Run a short experiment to produce a trade-off curve plot for the __smiling__ attribute with an average over __one__ run. Remember, evaluation requires training of an adversary to predict the sensitive attribute for each configuration, and can take some time.
+
+    # train the fixed classifiers
+    python run_experiment.py --gpus 0 --experiment_name=train_classifiers --mode=train
+
+    # train and evaluate models
+    python run_experiment.py --gpus 0 --experiment_name=demo_experiment --mode=train
+    python run_experiment.py --gpus 0 --experiment_name=demo_experiment --mode=evaluate
+    python run_experiment.py --gpus 0 --experiment_name=demo_experiment --mode=predict_utility
+    
+    # evaluate model and only run images through the filter
+    cp -r artifacts/demo_experiment/ artifacts/demo_baseline_experiment/
+    python run_experiment.py --gpus 0 --experiment_name=demo_baseline_experiment --mode=evaluate
+    python run_experiment.py --gpus 0 --experiment_name=demo_baseline_experiment --mode=predict_utility
+
+    # create trade-off curve
+    python vis/privacy_vs_utility_demo_plot.py
 
 ## Train the models
 List the number of GPUs you want to use to run the experiment. In the examples
@@ -93,7 +106,9 @@ the experiments will run on GPU 0 and GPU 1.
 To evaluate the main method experiment:
 
     python run_experiment.py --gpus 0 1 --experiment_name=attributes_experiment --mode=evaluate
+    python run_experiment.py --gpus 0 1 --experiment_name=attributes_experiment --mode=predict_utility
     python run_experiment.py --gpus 0 1 --experiment_name=attributes_entropy_experiment --mode=evaluate
+    python run_experiment.py --gpus 0 1 --experiment_name=attributes_entropy_experiment --mode=predict_utility
     python run_experiment.py --gpus 0 1 --experiment_name=filter_experiment --mode=evaluate
 
 To evaluate the baseline. Since the update of the filter model is independent
@@ -103,10 +118,13 @@ that we ONLY run the images through the filter in this evaluation.
 
     cp -r artifacts/attributes_experiment artifacts/attributes_baseline_experiment
     python run_experiment.py --gpus 0 1 --experiment_name=attributes_baseline_experiment --mode=evaluate
+    python run_experiment.py --gpus 0 1 --experiment_name=attributes_baseline_experiment --mode=predict_utility
     cp -r artifacts/attributes_entropy_experiment artifacts/attributes_entropy_baseline_experiment
     python run_experiment.py --gpus 0 1 --experiment_name=attributes_entropy_baseline_experiment --mode=evaluate
+    python run_experiment.py --gpus 0 1 --experiment_name=attributes_entropy_baseline_experiment --mode=predict_utility
     cp -r artifacts/filter_experiment artifacts/filter_baseline_experiment
     python run_experiment.py --gpus 0 1 --experiment_name=filter_baseline_experiment --mode=evaluate
+
 ## Produce main figure
 
 ### Figure 1
@@ -140,7 +158,6 @@ test data censored with the baseline, only the generator, and our method.
     python vis/create_filter_experiment_table.py
 
 (Output table is basically transposed w.r.t table in paper.)
-
 
 ## Visualize the output of the models
 To visualize the output of the models run:
