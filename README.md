@@ -92,6 +92,8 @@ Run a short experiment to produce a trade-off curve plot for the __smiling__ att
 
     # create trade-off curve
     python vis/privacy_vs_utility_demo_plot.py
+    
+The trade-off curve is saved in the working directory as 'Smiling_privacy_utility_tradeoff.pdf'.
 
 ## Train the models
 List the number of GPUs you want to use to run the experiment. In the examples
