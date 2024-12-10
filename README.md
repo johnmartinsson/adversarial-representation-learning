@@ -1,3 +1,20 @@
+# Adversarial representation learning for synthetic replacement of private attributes
+The official implementation of the paper "Adversarial representation learning for synthetic replacement of private attributes".
+
+[Paper](https://johnmartinsson.org/publications/2021/adversarial-representation-learning-images)
+
+Cite as:
+
+    @article{Martinsson2021,
+      author = {Martinsson, John and Zec, Edvin Listo and Gillblad, Daniel and Mogren, Olof},
+      title = {Adversarial representation learning for synthetic replacement of private attributes},
+      journal = {Proceedings - 2021 IEEE International Conference on Big Data, Big Data 2021},
+      year = {2021},
+      pages = {1291--1299},
+      doi = {10.1109/BigData52589.2021.9671802},
+      url = {https://ieeexplore.ieee.org/document/9671802}
+    }
+
 # Instructions for learning synthetic replacement of private attributes
 In this README we include a detailed description on how to download the data
 used in this study, how to setup the environment to run the scripts in, and how
